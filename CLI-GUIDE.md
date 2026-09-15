@@ -48,10 +48,13 @@ Use the **ID** column in your commands. These examples control light `1`:
 | `huereka on 1` | Turn on |
 | `huereka off 1` | Turn off |
 | `huereka brightness 1 50` | Set brightness to 50% and turn on |
+| `huereka color 1 FF8800` | Set orange color and brightness, and turn on |
 | `huereka warm 1` | Set warm white and turn on |
 | `huereka cool 1` | Set cool white and turn on |
 
 Brightness accepts whole numbers from **1 to 100**. Use `off` to switch off. Warm/cool and dimming require a compatible light. Each command affects only the specified light.
+
+**HTML colors:** `huereka color 1 RRGGBB` accepts exactly six uppercase hexadecimal digits, without `#`. Examples: `FF0000` (red), `00FF00` (green), `0000FF` (blue), `FFFFFF` (white). The command sets both color and brightness from the RGB value; `000000` turns the light off. A color-capable bulb is required. Actual colors depend on the bulb and may differ from a screen.
 
 ## Help and troubleshooting
 

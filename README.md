@@ -21,12 +21,15 @@ cd /d "C:\Repos\HueReka!\dist"
 huereka list
 huereka on 1
 huereka brightness 1 50
+huereka color 1 FF8800
 huereka warm 1
 huereka cool 1
 huereka off 1
 ```
 
 Replace `1` with the ID shown by `huereka list`. Each command affects only that light. Brightness is 1-100 percent; brightness and white-temperature commands also turn the light on. Unsupported capabilities and unreachable lights return errors.
+
+`huereka color <id> <RRGGBB>` accepts exactly six uppercase hexadecimal digits without `#`, such as `FF8800` for orange. It converts RGB to hue, saturation, and brightness and turns the light on; `000000` turns it off. Color-capable bulbs are required. Actual bulb colors may differ from screen colors.
 
 If you have not paired yet, press the bridge's round button and run `huereka pair 192.168.1.20` using your bridge's IP address. Run `huereka help` for usage. Pairing is saved for the current Windows user; no API key needs to appear on the command line.
 
