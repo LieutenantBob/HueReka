@@ -4,17 +4,23 @@ A small native Windows application for controlling Philips Hue lights on your lo
 
 ![HueReka desktop with simulated lights](docs/desktop.png)
 
-The desktop UI uses a Liquid Glass-inspired design with softly tinted glass panels, rounded controls, color swatches, and a light-color preview. This is a native Windows rendering of the visual style; it does not use Apple's platform components. Keyboard users can Tab between controls and adjust brightness with the arrow keys, Home, and End before choosing **Apply brightness**.
+The desktop UI uses a Liquid Glass-inspired design with softly tinted glass panels, rounded controls, color swatches, and a light-color preview. This is a native Windows rendering of the visual style; it does not use Apple's platform components.
 
 ## Run
 
 Double-click **Launch.cmd**, or run **dist\HueReka!.exe** after building. Windows 10/11 with .NET Framework 4.7.2 or newer is recommended. No SDK, npm packages, Hue account, or cloud login is needed. The executable is unsigned.
 
 1. Connect your PC and Hue Bridge to the same network.
-2. Click **Find bridge**, or enter its IPv4 address from the Hue app's bridge settings. If several bridges appear, choose one from the dropdown.
-3. Press the round link button on the bridge, then click **Pair**. If the pairing window expires, press the button and retry.
-4. Select a light and use **On**, **Off**, **Apply brightness**, the color swatches, **Custom color**, **Warm**, or **Cool**. Unsupported controls are disabled. Brightness and color changes also turn the light on. The orb previews the selected light's color; screen colors may differ from the bulb.
-5. Use **Connect** on subsequent launches. **Refresh** reads changes made by other apps; there is no background polling. **All lights on/off** affects every light on that bridge.
+2. Start HueReka. On first launch it searches for your bridge automatically. If exactly one is found, pairing starts right away; otherwise choose a bridge from the dropdown, or type its IPv4 address from the Hue app's bridge settings, and press **Connect** (or Enter).
+3. When asked, press the round link button on the bridge. HueReka waits up to 90 seconds and finishes pairing as soon as the button is pressed; there is no need to click anything again. Press **Cancel** or Esc to stop waiting.
+4. Select a light and use **On**, **Off**, the brightness slider, the color swatches, **Custom color**, **Warm**, or **Cool**. Brightness is applied when you release the slider. Unsupported controls are disabled. Brightness and color changes also turn the light on. The orb previews the selected light's color; screen colors may differ from the bulb.
+5. On later launches HueReka reconnects automatically. If your router gave the bridge a new IP address, HueReka finds it again and verifies it is the same bridge using its pinned certificate. Light states refresh automatically every 15 seconds and whenever you return to the window. **All lights on/off** affects every light on that bridge. Use **Pair again** if the bridge was reset or replaced.
+
+### Working with several lights
+
+- **Ctrl+click** adds or removes a light; **Shift+click** selects a range; **Ctrl+A** selects all. Every control then applies to all selected lights that support it, and unreachable or unsupported lights are skipped.
+- **Double-click** a light to switch it on or off. Press **Space** in the list to switch all selected lights on or off.
+- **F5** refreshes. The brightness slider accepts the arrow keys, Page Up/Down, Home and End, and applies the change when you release the key. Hover over controls for tips.
 
 ## Command Prompt
 
@@ -35,7 +41,7 @@ Replace `1` with the ID shown by `huereka list`. Each command affects only that 
 
 `huereka color <id> <RRGGBB>` accepts exactly six uppercase hexadecimal digits without `#`, such as `FF8800` for orange. It converts RGB to hue, saturation, and brightness and turns the light on; `000000` turns it off. Color-capable bulbs are required. Actual bulb colors may differ from screen colors.
 
-If you have not paired yet, press the bridge's round button and run `huereka pair 192.168.1.20` using your bridge's IP address. Run `huereka help` for usage. Pairing is saved for the current Windows user; no API key needs to appear on the command line.
+If you have not paired yet, run `huereka pair 192.168.1.20` using your bridge's IP address, then press the bridge's round button when prompted; the command waits up to 90 seconds. Run `huereka help` for usage. Pairing is saved for the current Windows user; no API key needs to appear on the command line.
 
 From any directory, use the full quoted path, for example `"C:\Repos\HueReka!\dist\huereka.exe" off 1`. In batch files that enable delayed expansion, run `setlocal DisableDelayedExpansion` before using the path containing `!`.
 
@@ -49,11 +55,11 @@ $test = Start-Process .\dist\HueReka!.exe -ArgumentList '--test' -Wait -PassThru
 $test.ExitCode
 ```
 
-The build uses the C# compiler included with Windows' .NET Framework. Tests cover mock bridge pairing and routes, light parsing, Hue errors, brightness conversion, Windows credential encryption, and form construction. They write `preview.png`; failures write `test-failure.txt` and exit with code 1. Tests do not send commands to physical lights.
+The build uses the C# compiler included with Windows' .NET Framework. Tests cover mock bridge pairing (including waiting for the link button, timeout and cancel) and routes, light parsing, Hue errors, brightness conversion, Windows credential encryption, form construction, and multi-light selection. They write `preview.png`; failures write `test-failure.txt` and exit with code 1. Tests do not send commands to physical lights.
 
 ## Connection and security
 
-Bridge calls use HTTPS and the Hue REST v1 API, following [Philips Hue's getting-started guide](https://developers.meethue.com/develop/get-started-2/). Only discovery uses the internet (`discovery.meethue.com`); manual IP entry and normal controls work locally. A bridge supporting HTTPS is required.
+Bridge calls use HTTPS and the Hue REST v1 API, following [Philips Hue's getting-started guide](https://developers.meethue.com/develop/get-started-2/). Only discovery uses the internet (`discovery.meethue.com`): on first launch before a bridge is paired, when **Find bridge** is pressed, and when a paired bridge stops answering at its saved address. Manual IP entry and normal controls work locally. A bridge supporting HTTPS is required.
 
 Pairing uses trust on first use: the certificate presented by the entered bridge is pinned for that connection and saved after successful pairing. Subsequent connections require the identical certificate. Perform initial pairing on a trusted home network. To accept a replaced bridge or renewed certificate, press its link button and Pair again. Certificate handling is scoped to bridge requests; discovery uses normal public certificate validation. No plaintext HTTP fallback is used.
 

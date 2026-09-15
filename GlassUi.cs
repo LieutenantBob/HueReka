@@ -10,6 +10,34 @@ namespace HueReka
         public static readonly Color Ink = Color.FromArgb(37, 40, 67);
         public static readonly Color Muted = Color.FromArgb(101, 104, 132);
         public static readonly Color Accent = Color.FromArgb(105, 83, 210);
+        public static void PaintBackdrop(Control child, Graphics graphics)
+        {
+            // Theme parent-background painting can copy sibling text or leave black
+            // pixels on a live HWND. Compose only our actual background surfaces,
+            // in their own coordinates, without invoking native parent painting.
+            var layers = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<Control, Point>>();
+            Point offset = child.Location;
+            for (Control parent = child.Parent; parent != null; parent = parent.Parent)
+            {
+                layers.Add(new System.Collections.Generic.KeyValuePair<Control, Point>(parent, offset));
+                offset.Offset(parent.Left, parent.Top);
+            }
+            using (var fill = new SolidBrush(Color.FromArgb(239, 237, 249))) graphics.FillRectangle(fill, child.ClientRectangle);
+            for (int i = layers.Count - 1; i >= 0; i--)
+            {
+                var canvas = layers[i].Key as GlassCanvas;
+                var panel = layers[i].Key as GlassPanel;
+                if (canvas == null && panel == null) continue;
+                var state = graphics.Save();
+                try
+                {
+                    graphics.TranslateTransform(-layers[i].Value.X, -layers[i].Value.Y);
+                    if (canvas != null) canvas.PaintSurface(graphics);
+                    else panel.PaintSurface(graphics);
+                }
+                finally { graphics.Restore(state); }
+            }
+        }
         public static GraphicsPath Round(RectangleF rect, float radius)
         {
             var path = new GraphicsPath(); float d = Math.Min(radius * 2, Math.Min(rect.Width, rect.Height));
@@ -32,7 +60,11 @@ namespace HueReka
         public GlassCanvas() { DoubleBuffered = true; ResizeRedraw = true; }
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            var g = e.Graphics;
+            PaintSurface(e.Graphics);
+        }
+        internal void PaintSurface(Graphics g)
+        {
+            if (Width <= 0 || Height <= 0) return;
             using (var fill = new LinearGradientBrush(ClientRectangle, Color.FromArgb(239, 237, 249), Color.FromArgb(223, 233, 245), 45)) g.FillRectangle(fill, ClientRectangle);
             Glass.Glow(g, new RectangleF(Width * .3f, -180, Width * .8f, Height * .9f), Color.FromArgb(155, 209, 192, 246));
             Glass.Glow(g, new RectangleF(-250, Height * .3f, 850, 700), Color.FromArgb(130, 179, 209, 245));
@@ -45,35 +77,65 @@ namespace HueReka
         public GlassPanel() { SetStyle(ControlStyles.SupportsTransparentBackColor, true); BackColor = Color.Transparent; DoubleBuffered = true; ResizeRedraw = true; }
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            base.OnPaint(e); PaintSurface(e.Graphics);
+        }
+        internal void PaintSurface(Graphics graphics)
+        {
+            if (Width < 8 || Height < 8) return;
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
             var bounds = new RectangleF(2, 2, Width - 5, Height - 7);
             using (var shadow = Glass.Round(new RectangleF(3, 5, Width - 6, Height - 7), 26))
-            using (var brush = new SolidBrush(Color.FromArgb(15, 72, 66, 104))) e.Graphics.FillPath(brush, shadow);
+            using (var brush = new SolidBrush(Color.FromArgb(15, 72, 66, 104))) graphics.FillPath(brush, shadow);
             using (var path = Glass.Round(bounds, 26))
             using (var fill = new LinearGradientBrush(bounds, Color.FromArgb(211, 255, 255, 255), Color.FromArgb(135, 255, 255, 255), 110))
             using (var border = new Pen(Color.FromArgb(235, 255, 255, 255), 1.3f))
-            { e.Graphics.FillPath(fill, path); e.Graphics.DrawPath(border, path); }
+            { graphics.FillPath(fill, path); graphics.DrawPath(border, path); }
         }
     }
 
-    sealed class GlassButton : Button
+    sealed class GlassButton : Control, IButtonControl
     {
         public bool Primary;
         public Color Swatch = Color.Empty;
         bool hover, pressed;
+        public DialogResult DialogResult { get; set; }
+        public void NotifyDefault(bool value) { Invalidate(); }
+        public void PerformClick() { if (Enabled && CanSelect) OnClick(EventArgs.Empty); }
         public GlassButton()
         {
-            SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
-            BackColor = Color.Transparent; FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Opaque | ControlStyles.Selectable | ControlStyles.StandardClick | ControlStyles.ResizeRedraw, true);
+            BackColor = Color.FromArgb(239, 237, 249); TabStop = true; AccessibleRole = AccessibleRole.PushButton;
             Size = new Size(116, 42); Cursor = Cursors.Hand; Font = new Font("Segoe UI", 10, FontStyle.Regular);
         }
         protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { hover = pressed = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { pressed = true; Invalidate(); base.OnMouseDown(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { Focus(); pressed = true; Invalidate(); } base.OnMouseDown(e); }
         protected override void OnMouseUp(MouseEventArgs e) { pressed = false; Invalidate(); base.OnMouseUp(e); }
         protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
+        protected override void OnPaintBackground(PaintEventArgs e) { }
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) { pressed = true; Invalidate(); e.Handled = e.SuppressKeyPress = true; }
+        }
+        protected override void OnKeyUp(KeyEventArgs e)
+        {
+            base.OnKeyUp(e);
+            if (pressed && (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter)) { pressed = false; Invalidate(); PerformClick(); e.Handled = true; }
+        }
+        protected override void OnLostFocus(EventArgs e) { pressed = false; Invalidate(); base.OnLostFocus(e); }
+        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+        protected override AccessibleObject CreateAccessibilityInstance() { return new GlassButtonAccessibility(this); }
+        sealed class GlassButtonAccessibility : ControlAccessibleObject
+        {
+            readonly GlassButton owner;
+            public GlassButtonAccessibility(GlassButton owner) : base(owner) { this.owner = owner; }
+            public override string DefaultAction { get { return "Press"; } }
+            public override void DoDefaultAction() { owner.PerformClick(); }
+        }
         protected override void OnPaint(PaintEventArgs e)
         {
+            Glass.PaintBackdrop(this, e.Graphics);
             var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
             var rect = new RectangleF(2, pressed ? 4 : 2, Width - 5, Height - 5);
             bool swatch = !Swatch.IsEmpty;
@@ -102,13 +164,27 @@ namespace HueReka
             SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable, true);
             BackColor = Color.Transparent; Height = 42; TabStop = true; AccessibleRole = AccessibleRole.Slider; AccessibleName = "Brightness";
         }
+        // Raised when the user finishes adjusting (mouse released or key released), not on every step.
+        public event EventHandler Committed;
+        bool keyAdjusting;
+        public bool Dragging { get { return Capture || keyAdjusting; } }
+        internal void Commit() { if (Enabled && Committed != null) Committed(this, EventArgs.Empty); }
+        static bool IsAdjustKey(Keys key) { return key == Keys.Left || key == Keys.Right || key == Keys.Up || key == Keys.Down || key == Keys.PageUp || key == Keys.PageDown || key == Keys.Home || key == Keys.End; }
         void SetFromMouse(int x) { Value = 1 + (int)Math.Round((x - 14) * 99.0 / Math.Max(1, Width - 28)); }
         protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); if (e.Button != MouseButtons.Left) return; Focus(); Capture = true; SetFromMouse(e.X); }
         protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); if (Capture) SetFromMouse(e.X); }
-        protected override void OnMouseUp(MouseEventArgs e) { Capture = false; base.OnMouseUp(e); }
-        protected override bool IsInputKey(Keys keyData) { return keyData == Keys.Left || keyData == Keys.Right || keyData == Keys.Home || keyData == Keys.End || base.IsInputKey(keyData); }
+        protected override void OnMouseUp(MouseEventArgs e) { bool wasDragging = Capture; Capture = false; base.OnMouseUp(e); if (wasDragging) Commit(); }
+        protected override bool IsInputKey(Keys keyData) { return IsAdjustKey(keyData) || base.IsInputKey(keyData); }
         protected override void OnKeyDown(KeyEventArgs e)
-        { base.OnKeyDown(e); if (e.KeyCode == Keys.Left) Value--; else if (e.KeyCode == Keys.Right) Value++; else if (e.KeyCode == Keys.Home) Value = 1; else if (e.KeyCode == Keys.End) Value = 100; else return; e.Handled = true; }
+        {
+            base.OnKeyDown(e);
+            if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Down) Value--; else if (e.KeyCode == Keys.Right || e.KeyCode == Keys.Up) Value++;
+            else if (e.KeyCode == Keys.PageDown) Value -= 10; else if (e.KeyCode == Keys.PageUp) Value += 10;
+            else if (e.KeyCode == Keys.Home) Value = 1; else if (e.KeyCode == Keys.End) Value = 100; else return;
+            e.Handled = true; keyAdjusting = true;
+        }
+        protected override void OnKeyUp(KeyEventArgs e) { base.OnKeyUp(e); if (IsAdjustKey(e.KeyCode)) { e.Handled = true; keyAdjusting = false; Commit(); } }
+        protected override void OnLostFocus(EventArgs e) { keyAdjusting = false; base.OnLostFocus(e); }
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -128,6 +204,7 @@ namespace HueReka
         public LightList()
         {
             DrawMode = DrawMode.OwnerDrawFixed; ItemHeight = 72; BorderStyle = BorderStyle.None; IntegralHeight = false;
+            SelectionMode = SelectionMode.MultiExtended;
             BackColor = Color.FromArgb(239, 240, 249); Font = new Font("Segoe UI", 10); AccessibleName = "Lights";
         }
         protected override void OnDrawItem(DrawItemEventArgs e)

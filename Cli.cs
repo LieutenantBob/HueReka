@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HueReka
@@ -21,7 +22,7 @@ namespace HueReka
                               Set color and brightness; 000000 turns off
   huereka warm <id>            Warm white and turn on (compatible bulbs)
   huereka cool <id>            Cool white and turn on (compatible bulbs)
-  huereka pair <bridge-ip>     Press the bridge link button before running
+  huereka pair <bridge-ip>     Pair, then press the bridge link button when asked
   huereka help
 
 Uses the same saved pairing as the desktop app, for this Windows user.
@@ -104,7 +105,8 @@ Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
                 {
                     var settings = new Settings { Address = Bridge.ValidateAddress(args[1]) };
                     var pairingBridge = create(settings);
-                    await pairingBridge.Pair();
+                    output.WriteLine("Press the round link button on your Hue Bridge. Waiting up to 90 seconds...");
+                    await pairingBridge.PairWhenReady(TimeSpan.FromSeconds(90), null, CancellationToken.None);
                     await pairingBridge.Lights();
                     save(settings);
                     output.WriteLine("Paired with " + settings.Address + ". Run huereka list.");
@@ -158,8 +160,11 @@ Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
         {
             var calls = new List<string>();
             bool rejectWrite = false, paired = false;
+            int unpressedPairAttempts = 2;
+            Bridge.PairPollInterval = TimeSpan.FromMilliseconds(5);
             Func<Settings, Bridge> create = settings => new Bridge(settings, (method, path, body) => {
                 calls.Add(method + " " + path + " " + body);
+                if (method == "POST" && unpressedPairAttempts-- > 0) return "[{\"error\":{\"type\":101,\"description\":\"link button not pressed\"}}]";
                 if (method == "POST") return "[{\"success\":{\"username\":\"test-key\"}}]";
                 if (method == "GET") return "{\"1\":{\"name\":\"Desk\",\"state\":{\"on\":true,\"bri\":127,\"ct\":300,\"hue\":0,\"sat\":254,\"reachable\":true}},\"2\":{\"name\":\"Offline\",\"state\":{\"on\":false,\"reachable\":false}},\"3\":{\"name\":\"Plug\",\"state\":{\"on\":false,\"reachable\":true}}}";
                 return rejectWrite ? "[{\"error\":{\"type\":7,\"description\":\"invalid value\"}}]" : "[{\"success\":{}}]";
@@ -193,7 +198,9 @@ Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
             Check(writes == calls.Count(call => call.StartsWith("PUT")), "Invalid targets must not receive writes");
             rejectWrite = true;
             Check(await run(new[] { "on", "1" }) == 1, "Bridge errors return nonzero");
+            int pairCalls = calls.Count;
             Check(await run(new[] { "pair", "192.168.1.2" }) == 0 && paired, "Pair saves credentials");
+            Check(calls.Skip(pairCalls).Count(call => call.StartsWith("POST")) == 3, "Pair waits for the link button instead of failing");
             Check(await Execute(new[] { "list" }, () => new Settings(), create, s => {}, output, error) == 1, "Missing credentials");
         }
         static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }

@@ -25,13 +25,13 @@ For updates, replace this copy of `huereka.exe` with the newer version. Your sav
 
 Skip this step if you have already paired using the desktop app under the same Windows account.
 
-Find the bridge's IP address in the Hue app's bridge settings. Press the round link button on the bridge, then promptly run:
+Find the bridge's IP address in the Hue app's bridge settings, then run:
 
 ```bat
 huereka pair 192.168.1.20
 ```
 
-Replace `192.168.1.20` with your bridge's IP address. If pairing expires, press the button and retry. Pairing is remembered for your Windows account.
+Replace `192.168.1.20` with your bridge's IP address. When prompted, press the round link button on the bridge; the command waits up to 90 seconds and finishes as soon as the button is pressed. Pairing is remembered for your Windows account.
 
 ## 3. Find and control a light
 
