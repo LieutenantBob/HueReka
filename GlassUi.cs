@@ -5,6 +5,12 @@ using System.Windows.Forms;
 
 namespace HueReka
 {
+    // A control that draws a background custom glass controls should appear on top of.
+    interface IGlassSurface
+    {
+        void PaintSurface(Graphics graphics);
+    }
+
     static class Glass
     {
         public static readonly Color Ink = Color.FromArgb(37, 40, 67);
@@ -25,15 +31,13 @@ namespace HueReka
             using (var fill = new SolidBrush(Color.FromArgb(239, 237, 249))) graphics.FillRectangle(fill, child.ClientRectangle);
             for (int i = layers.Count - 1; i >= 0; i--)
             {
-                var canvas = layers[i].Key as GlassCanvas;
-                var panel = layers[i].Key as GlassPanel;
-                if (canvas == null && panel == null) continue;
+                var surface = layers[i].Key as IGlassSurface;
+                if (surface == null) continue;
                 var state = graphics.Save();
                 try
                 {
                     graphics.TranslateTransform(-layers[i].Value.X, -layers[i].Value.Y);
-                    if (canvas != null) canvas.PaintSurface(graphics);
-                    else panel.PaintSurface(graphics);
+                    surface.PaintSurface(graphics);
                 }
                 finally { graphics.Restore(state); }
             }
@@ -55,14 +59,14 @@ namespace HueReka
         }
     }
 
-    sealed class GlassCanvas : Panel
+    sealed class GlassCanvas : Panel, IGlassSurface
     {
         public GlassCanvas() { DoubleBuffered = true; ResizeRedraw = true; }
         protected override void OnPaintBackground(PaintEventArgs e)
         {
             PaintSurface(e.Graphics);
         }
-        internal void PaintSurface(Graphics g)
+        public void PaintSurface(Graphics g)
         {
             if (Width <= 0 || Height <= 0) return;
             using (var fill = new LinearGradientBrush(ClientRectangle, Color.FromArgb(239, 237, 249), Color.FromArgb(223, 233, 245), 45)) g.FillRectangle(fill, ClientRectangle);
@@ -72,14 +76,14 @@ namespace HueReka
         }
     }
 
-    sealed class GlassPanel : Panel
+    sealed class GlassPanel : Panel, IGlassSurface
     {
         public GlassPanel() { SetStyle(ControlStyles.SupportsTransparentBackColor, true); BackColor = Color.Transparent; DoubleBuffered = true; ResizeRedraw = true; }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e); PaintSurface(e.Graphics);
         }
-        internal void PaintSurface(Graphics graphics)
+        public void PaintSurface(Graphics graphics)
         {
             if (Width < 8 || Height < 8) return;
             graphics.SmoothingMode = SmoothingMode.AntiAlias;

@@ -12,7 +12,7 @@ Double-click **Launch.cmd**, or run **dist\HueReka!.exe** after building. Window
 
 1. Connect your PC and Hue Bridge to the same network.
 2. Start HueReka. On first launch it searches for your bridge automatically. If exactly one is found, pairing starts right away; otherwise choose a bridge from the dropdown, or type its IPv4 address from the Hue app's bridge settings, and press **Connect** (or Enter).
-3. When asked, press the round link button on the bridge. HueReka waits up to 90 seconds and finishes pairing as soon as the button is pressed; there is no need to click anything again. Press **Cancel** or Esc to stop waiting.
+3. A large pairing card covers the app and asks you to press the round link button on the bridge. HueReka waits up to 90 seconds, with a countdown ring, and finishes pairing as soon as the button is pressed; there is no need to click anything again. Press **Cancel** or Esc to stop waiting. If time runs out, choose **Try again** or **Not now**.
 4. Select a light and use **On**, **Off**, the brightness slider, the color swatches, **Custom color**, **Warm**, or **Cool**. Brightness is applied when you release the slider. Unsupported controls are disabled. Brightness and color changes also turn the light on. The orb previews the selected light's color; screen colors may differ from the bulb.
 5. On later launches HueReka reconnects automatically. If your router gave the bridge a new IP address, HueReka finds it again and verifies it is the same bridge using its pinned certificate. Light states refresh automatically every 15 seconds and whenever you return to the window. **All lights on/off** affects every light on that bridge. Use **Pair again** if the bridge was reset or replaced.
 

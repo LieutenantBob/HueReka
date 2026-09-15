@@ -19,7 +19,11 @@ namespace HueReka
         readonly GlassCanvas root = new GlassCanvas { Dock = DockStyle.Fill };
         readonly GlassPanel controls = new GlassPanel();
         readonly GlassPanel sidebar = new GlassPanel();
-        GlassButton color, warm, cool, onButton, offButton, cancelButton;
+        GlassButton color, warm, cool, onButton, offButton;
+        readonly PairingOverlay pairingOverlay = new PairingOverlay();
+        // Replaceable so tests can pair with a simulated bridge without touching saved credentials.
+        internal Func<Settings, Bridge> CreateBridge = settings => new Bridge(settings);
+        internal Action<Settings> SaveSettings = settings => settings.Save();
         readonly Panel allRow = new Panel { BackColor = Color.Transparent };
         readonly Panel bridgeArea = new Panel { BackColor = Color.Transparent };
         readonly LightOrb orb = new LightOrb();
@@ -43,20 +47,18 @@ namespace HueReka
         public MainWindow(bool preview = false)
         {
             this.preview = preview;
+            if (preview) SaveSettings = settings => { };
             Text = "HueReka!"; ClientSize = new Size(1120, 820); MinimumSize = new Size(1080, 860);
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             StartPosition = FormStartPosition.CenterScreen; Font = new Font("Segoe UI", 10); KeyPreview = true;
             AutoScaleDimensions = new SizeF(96, 96); AutoScaleMode = AutoScaleMode.Dpi;
             BackColor = Color.FromArgb(239, 237, 249); ForeColor = Glass.Ink;
             Controls.Add(root);
+            Controls.Add(pairingOverlay); pairingOverlay.BringToFront();
             BuildHeader();
             BuildSidebar();
             BuildControls();
-            status.SetBounds(35, 757, 900, 49); status.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; root.Controls.Add(status);
-            cancelButton = new GlassButton { Text = "Cancel", AccessibleName = "Cancel pairing", Visible = false };
-            cancelButton.Click += (sender, args) => CancelPairing();
-            cancelButton.SetBounds(962, 761, 118, 40); cancelButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right; root.Controls.Add(cancelButton);
-            tips.SetToolTip(cancelButton, "Stop waiting for the bridge button (Esc)");
+            status.SetBounds(35, 757, 1047, 49); status.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; root.Controls.Add(status);
             WireEvents();
             try { saved = preview ? new Settings() : Settings.Load(); SetAddress(saved.Address); status.Text = "Ready when you are."; }
             catch (Exception) { saved = new Settings(); status.Text = "Your saved connection could not be read. Press Connect to pair your bridge again."; }
@@ -141,13 +143,15 @@ namespace HueReka
                     status.Text = "Press Enter or Connect to switch bridges. Controls still act on " + bridge.Connection.Address + " until then.";
             };
             address.KeyDown += async (sender, args) => { if (args.KeyCode != Keys.Enter) return; args.SuppressKeyPress = true; await Run(() => ConnectOrPair(false)); };
+            pairingOverlay.CancelRequested += (sender, args) => CancelPairing();
             refreshTimer.Tick += (sender, args) => AutoRefresh();
             Activated += (sender, args) => AutoRefresh();
             Shown += async (sender, args) => { if (!preview) { refreshTimer.Start(); await Run(StartUp); } };
             FormClosing += (sender, args) =>
             {
                 if (!busy) return;
-                args.Cancel = true; closeWhenIdle = true; CancelPairing();
+                args.Cancel = true; closeWhenIdle = true;
+                if (pairingOverlay.Visible) pairingOverlay.Dismiss(); else CancelPairing();
                 status.Text = "Finishing the current request, then closing...";
             };
             FormClosed += (sender, args) => { refreshTimer.Dispose(); tips.Dispose(); };
@@ -169,7 +173,7 @@ namespace HueReka
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
-            if (e.KeyCode == Keys.Escape && pairing != null) { CancelPairing(); e.Handled = true; }
+            if (pairingOverlay.Visible) { if (e.KeyCode == Keys.Escape) { pairingOverlay.Dismiss(); e.Handled = true; } }
             else if (e.KeyCode == Keys.F5 && bridge != null) { e.Handled = true; var ignored = Run(RefreshWithStatus); }
             else if (lights.Focused && e.Control && e.KeyCode == Keys.A) { e.Handled = e.SuppressKeyPress = true; SelectAll(); }
             else if (lights.Focused && e.KeyCode == Keys.Space && !e.Control) { e.Handled = e.SuppressKeyPress = true; var ignored = Run(ToggleSelection); }

@@ -137,36 +137,66 @@ namespace HueReka
         async Task PairWith(string ip)
         {
             var connection = new Settings { Address = ip };
-            var candidate = new Bridge(connection);
-            pairing = new CancellationTokenSource();
-            cancelButton.Visible = true; UseWaitCursor = false;
-            status.Text = "Contacting your bridge at " + ip + "...";
+            var candidate = CreateBridge(connection);
+            ShowPairingOverlay(ip);
             try
             {
-                await candidate.PairWhenReady(PairTimeout, secondsLeft =>
-                    status.Text = "Now press the round link button on your Hue Bridge. HueReka is waiting for it...  (" + secondsLeft + "s)", pairing.Token);
+                while (!await WaitForLinkButton(candidate))
+                {
+                    if (!await pairingOverlay.AskRetry()) { status.Text = "No problem. Press Connect whenever you're ready to pair."; return; }
+                    pairingOverlay.Restart(PairTimeout);
+                }
+                pairingOverlay.ShowPaired();
+                await Open(connection);
+                await Task.Delay(PairedCelebration);
+                status.Text = "Paired and connected. " + LightsSummary() + " HueReka will connect automatically next time.";
             }
-            finally
+            finally { HidePairingOverlay(); }
+        }
+
+        internal static TimeSpan PairedCelebration = TimeSpan.FromMilliseconds(900);
+
+        // Returns false when time ran out; cancellation and connection errors propagate.
+        async Task<bool> WaitForLinkButton(Bridge candidate)
+        {
+            pairing = new CancellationTokenSource();
+            bool pressed = true;
+            try { await candidate.PairWhenReady(PairTimeout, null, pairing.Token); }
+            catch (TimeoutException) { pressed = false; }
+            finally { var finished = pairing; pairing = null; finished.Dispose(); }
+            return pressed;
+        }
+
+        void ShowPairingOverlay(string ip)
+        {
+            Bitmap snapshot = null;
+            if (root.Width > 0 && root.Height > 0)
             {
-                cancelButton.Visible = false; UseWaitCursor = true;
-                var finished = pairing; pairing = null; finished.Dispose();
+                snapshot = new Bitmap(root.Width, root.Height);
+                root.DrawToBitmap(snapshot, new Rectangle(Point.Empty, root.Size));
             }
-            status.Text = "Paired! Loading your lights...";
-            await Open(connection);
-            status.Text = "Paired and connected. " + LightsSummary() + " HueReka will connect automatically next time.";
+            root.Enabled = false; UseWaitCursor = false;
+            status.Text = "Waiting for the button on your Hue Bridge...";
+            pairingOverlay.ShowWaiting(snapshot, ip, PairTimeout);
+        }
+
+        void HidePairingOverlay()
+        {
+            pairingOverlay.Close();
+            root.Enabled = true; UseWaitCursor = busy;
         }
 
         void CancelPairing() { if (pairing != null) pairing.Cancel(); }
 
         async Task Open(Settings connection)
         {
-            var candidate = new Bridge(connection);
+            var candidate = CreateBridge(connection);
             var result = await candidate.Lights();
             bridge = candidate; saved = connection; lostContact = false;
             SetAddress(connection.Address);
             changeVersion++;
             ShowLights(result);
-            saved.Save();
+            SaveSettings(saved);
         }
 
         string LightsSummary() { return lights.Items.Count == 1 ? "1 light found." : lights.Items.Count + " lights found."; }
@@ -283,7 +313,7 @@ namespace HueReka
             brightnessHint.Visible = brightness.Enabled;
             empty.Visible = lights.Items.Count == 0;
             empty.Text = bridge == null && busy ? "Looking for your lights..." : EmptyText;
-            lightCount.Text = lights.Items.Count == 0 ? "A home full of possibilities" : lights.Items.Count + " lights  /  Ctrl-click to pick several";
+            lightCount.Text = lights.Items.Count == 0 ? "A home full of possibilities" : lights.Items.Count == 1 ? "1 light in your home" : lights.Items.Count + " lights  /  Ctrl-click to pick several";
             connectionBadge.Text = bridge == null ? "Not connected  /  Local control" : "Connected  /  " + bridge.Connection.Address;
             connectionBadge.ForeColor = bridge == null ? Glass.Muted : Color.FromArgb(49, 123, 106);
             UpdateHeading(chosen);

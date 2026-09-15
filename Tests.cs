@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace HueReka
@@ -43,7 +44,32 @@ namespace HueReka
             Assert(calls.Select(call => call.Substring(0, call.LastIndexOf(' '))).SequenceEqual(new[] { "POST /api", "GET /api/test-key/lights", "PUT /api/test-key/lights/1/state", "PUT /api/test-key/groups/0/action" }), "API routes");
             byte[] plain = Encoding.UTF8.GetBytes("pairing-secret");
             Assert(ProtectedData.Unprotect(ProtectedData.Protect(plain, null, DataProtectionScope.CurrentUser), null, DataProtectionScope.CurrentUser).SequenceEqual(plain), "Credential encryption");
-            WindowTests(bridge, calls);
+            InsideMessageLoop(() => WindowTests(bridge, calls));
+        }
+
+        // Window tests must run inside Application.Run like the real app. Otherwise there is no WinForms
+        // synchronization context, code after each await resumes on a thread-pool thread, and UI bugs hide.
+        static void InsideMessageLoop(Action tests)
+        {
+            Exception failure = null;
+            var loop = new ApplicationContext();
+            using (var starter = new System.Windows.Forms.Timer { Interval = 1 })
+            {
+                starter.Tick += (sender, args) =>
+                {
+                    starter.Stop();
+                    try
+                    {
+                        Assert(SynchronizationContext.Current is WindowsFormsSynchronizationContext, "UI synchronization context is installed");
+                        tests();
+                    }
+                    catch (Exception error) { failure = error; }
+                    finally { loop.ExitThread(); }
+                };
+                starter.Start();
+                Application.Run(loop);
+            }
+            if (failure != null) throw new Exception("Window tests failed", failure);
         }
 
         static void PairingTests()
@@ -124,8 +150,79 @@ namespace HueReka
                 WaitIdle(window);
                 Assert(calls.Skip(keyboardCalls).Any(call => call.StartsWith("PUT /api/test-key/lights/1/state")), "Space activates the custom button");
                 MultiSelectTests(window, calls, lightList, on);
+                PairingOverlayTests(window);
                 window.Close();
             }
+        }
+
+        static void WaitUntil(Func<bool> condition, string message)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (!condition() && DateTime.UtcNow < deadline) { Application.DoEvents(); Thread.Sleep(5); }
+            Assert(condition(), message);
+        }
+
+        // Captures the overlay itself: Form.DrawToBitmap paints sibling controls in reverse z-order,
+        // so a whole-window capture would show the app on top of the overlay.
+        static void Screenshot(Control control, string file)
+        {
+            using (var bitmap = new Bitmap(control.Width, control.Height)) { control.DrawToBitmap(bitmap, new Rectangle(Point.Empty, control.Size)); bitmap.Save(file); }
+        }
+
+        static void StartPairing(MainWindow window)
+        {
+            var connectOrPair = typeof(MainWindow).GetMethod("ConnectOrPair", Private);
+            Func<Task> action = () => (Task)connectOrPair.Invoke(window, new object[] { true });
+            typeof(MainWindow).GetMethod("Run", Private).Invoke(window, new object[] { action });
+        }
+
+        static void PairingOverlayTests(MainWindow window)
+        {
+            var overlay = Field<PairingOverlay>(window, "pairingOverlay");
+            var root = Field<GlassCanvas>(window, "root");
+            Func<string, GlassButton> overlayButton = name => (GlassButton)typeof(PairingOverlay).GetField(name, Private).GetValue(overlay);
+            Func<PairingOverlay.Stage, bool> showing = stage => overlay.Visible && overlay.Current == stage;
+            window.Size = new Size(1136, 860);
+            Field<ComboBox>(window, "address").Text = "192.168.1.9";
+            MainWindow.PairedCelebration = TimeSpan.FromMilliseconds(50);
+            bool pressed = false;
+            window.CreateBridge = settings => new Bridge(settings, (method, path, body) => {
+                if (method != "POST") return "{\"7\":{\"name\":\"Porch\",\"state\":{\"on\":true,\"bri\":200,\"reachable\":true}}}";
+                if (pressed) return "[{\"success\":{\"username\":\"paired-key\"}}]";
+                Thread.Sleep(20); return NotPressed;
+            });
+
+            StartPairing(window);
+            WaitUntil(() => showing(PairingOverlay.Stage.Waiting), "Pairing shows the full-window overlay");
+            Assert(!root.Enabled, "The app is blocked behind the pairing overlay");
+            var settle = DateTime.UtcNow.AddMilliseconds(400);
+            while (DateTime.UtcNow < settle) { Application.DoEvents(); Thread.Sleep(10); }
+            Screenshot(overlay, "preview-pairing.png");
+            pressed = true;
+            WaitIdle(window);
+            Assert(!overlay.Visible && root.Enabled, "Overlay closes once the bridge pairs");
+            Assert(Field<LightList>(window, "lights").Items.Cast<Light>().Any(light => light.Name == "Porch"), "Paired bridge's lights are shown");
+
+            pressed = false;
+            MainWindow.PairTimeout = TimeSpan.FromMilliseconds(400);
+            StartPairing(window);
+            WaitUntil(() => showing(PairingOverlay.Stage.TimedOut), "Running out of time offers to try again");
+            Screenshot(overlay, "preview-pairing-timeout.png");
+            var retry = overlayButton("retry");
+            Assert(retry.Visible && !overlayButton("cancel").Visible, "Timed-out card shows Try again instead of Cancel");
+            retry.PerformClick();
+            WaitUntil(() => showing(PairingOverlay.Stage.Waiting), "Try again waits for the button again");
+            WaitUntil(() => showing(PairingOverlay.Stage.TimedOut), "Second attempt times out too");
+            overlayButton("notNow").PerformClick();
+            WaitIdle(window);
+            Assert(!overlay.Visible && root.Enabled && Field<Label>(window, "status").Text.Contains("whenever you're ready"), "Not now closes the overlay");
+
+            MainWindow.PairTimeout = TimeSpan.FromSeconds(30);
+            StartPairing(window);
+            WaitUntil(() => showing(PairingOverlay.Stage.Waiting), "Overlay shows for a new attempt");
+            typeof(MainWindow).GetMethod("OnKeyDown", Private).Invoke(window, new object[] { new KeyEventArgs(Keys.Escape) });
+            WaitIdle(window);
+            Assert(!overlay.Visible && root.Enabled && Field<Label>(window, "status").Text.StartsWith("Cancelled"), "Escape cancels pairing and unblocks the app");
         }
 
         static void MultiSelectTests(MainWindow window, List<string> calls, LightList lightList, GlassButton on)
