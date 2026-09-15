@@ -2,6 +2,10 @@
 
 A small native Windows application for controlling Philips Hue lights on your local network.
 
+![HueReka desktop with simulated lights](docs/desktop.png)
+
+The desktop UI uses a Liquid Glass-inspired design with softly tinted glass panels, rounded controls, color swatches, and a light-color preview. This is a native Windows rendering of the visual style; it does not use Apple's platform components. Keyboard users can Tab between controls and adjust brightness with the arrow keys, Home, and End before choosing **Apply brightness**.
+
 ## Run
 
 Double-click **Launch.cmd**, or run **dist\HueReka!.exe** after building. Windows 10/11 with .NET Framework 4.7.2 or newer is recommended. No SDK, npm packages, Hue account, or cloud login is needed. The executable is unsigned.
@@ -9,7 +13,7 @@ Double-click **Launch.cmd**, or run **dist\HueReka!.exe** after building. Window
 1. Connect your PC and Hue Bridge to the same network.
 2. Click **Find bridge**, or enter its IPv4 address from the Hue app's bridge settings. If several bridges appear, choose one from the dropdown.
 3. Press the round link button on the bridge, then click **Pair**. If the pairing window expires, press the button and retry.
-4. Select a light and use **On**, **Off**, **Apply brightness**, **Color**, **Warm**, or **Cool**. Unsupported controls are disabled. Brightness and color changes also turn the light on.
+4. Select a light and use **On**, **Off**, **Apply brightness**, the color swatches, **Custom color**, **Warm**, or **Cool**. Unsupported controls are disabled. Brightness and color changes also turn the light on. The orb previews the selected light's color; screen colors may differ from the bulb.
 5. Use **Connect** on subsequent launches. **Refresh** reads changes made by other apps; there is no background polling. **All lights on/off** affects every light on that bridge.
 
 ## Command Prompt
