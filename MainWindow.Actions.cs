@@ -126,7 +126,7 @@ namespace HueReka
             foreach (string ip in found.Where(candidate => candidate != saved.Address))
             {
                 bool reconnected = true;
-                try { await Open(new Settings { Address = ip, Key = saved.Key, Fingerprint = saved.Fingerprint }); }
+                try { await Open(new Settings { Address = ip, Key = saved.Key, Fingerprint = saved.Fingerprint, FavoriteLight = saved.FavoriteLight }); }
                 catch (WebException) { reconnected = false; }
                 catch (InvalidOperationException) { reconnected = false; }
                 if (reconnected) return ip;
@@ -136,7 +136,7 @@ namespace HueReka
 
         async Task PairWith(string ip)
         {
-            var connection = new Settings { Address = ip };
+            var connection = new Settings { Address = ip, FavoriteLight = ip == saved.Address ? saved.FavoriteLight : "" };
             var candidate = CreateBridge(connection);
             ShowPairingOverlay(ip);
             try
@@ -213,11 +213,27 @@ namespace HueReka
                 lights.BeginUpdate();
                 lights.Items.Clear(); lights.Items.AddRange(result.ToArray());
                 for (int i = 0; i < result.Count; i++) if (selectedIds.Contains(result[i].Id)) lights.SetSelected(i, true);
-                if (lights.SelectedIndices.Count == 0 && result.Count > 0) lights.SetSelected(0, true);
+                if (lights.SelectedIndices.Count == 0 && result.Count > 0) lights.SetSelected(Math.Max(0, result.FindIndex(light => light.Id == saved.FavoriteLight)), true);
                 if (result.Count > 0) lights.TopIndex = Math.Min(top, result.Count - 1);
                 lights.EndUpdate();
             }
+            lights.FavoriteId = saved.FavoriteLight;
             allRow.Enabled = bridge != null; UpdateSelection();
+        }
+
+        // Stars the selected light, or clears the star if it is already the favorite. Only one light is the favorite.
+        Task ToggleFavorite()
+        {
+            var chosen = Selection;
+            if (bridge == null || chosen.Count != 1) return Task.FromResult(0);
+            string previous = saved.FavoriteLight;
+            string next = chosen[0].Id == previous ? "" : chosen[0].Id;
+            saved.FavoriteLight = next;
+            try { SaveSettings(saved); }
+            catch { saved.FavoriteLight = previous; throw; }
+            lights.FavoriteId = next;
+            status.Text = next == "" ? chosen[0].Name + " is no longer your favorite." : chosen[0].Name + " is now your favorite. HueReka will select it when it opens.";
+            return Task.FromResult(0);
         }
 
         async Task RefreshLights() { changeVersion++; ShowLights(await bridge.Lights()); }
@@ -310,6 +326,10 @@ namespace HueReka
             color.Enabled = usable.Any(SupportsColor);
             foreach (var swatch in swatches) swatch.Enabled = color.Enabled;
             warm.Enabled = cool.Enabled = usable.Any(SupportsWhite);
+            bool starred = chosen.Count == 1 && chosen[0].Id == saved.FavoriteLight;
+            favorite.Enabled = bridge != null && chosen.Count == 1;
+            favorite.Text = starred ? "★" : "☆";
+            favorite.AccessibleName = starred ? "Remove favorite" : "Make favorite";
             brightnessHint.Visible = brightness.Enabled;
             empty.Visible = lights.Items.Count == 0;
             empty.Text = bridge == null && busy ? "Looking for your lights..." : EmptyText;

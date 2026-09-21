@@ -205,6 +205,8 @@ namespace HueReka
 
     sealed class LightList : ListBox
     {
+        string favoriteId = "";
+        public string FavoriteId { get { return favoriteId; } set { favoriteId = value ?? ""; Invalidate(); } }
         public LightList()
         {
             DrawMode = DrawMode.OwnerDrawFixed; ItemHeight = 72; BorderStyle = BorderStyle.None; IntegralHeight = false;
@@ -226,7 +228,11 @@ namespace HueReka
             Color tint = !light.Reachable ? Color.FromArgb(190, 192, 207) : on ? Color.FromArgb(239, 186, 109) : Color.FromArgb(165, 166, 191);
             using (var brush = new SolidBrush(Color.FromArgb(45, tint))) g.FillEllipse(brush, rect.X + 12, rect.Y + 12, 38, 38);
             using (var pen = new Pen(tint, 2)) { g.DrawEllipse(pen, rect.X + 24, rect.Y + 20, 14, 16); g.DrawLine(pen, rect.X + 27, rect.Y + 39, rect.X + 35, rect.Y + 39); }
-            using (var font = new Font("Segoe UI", 10, active ? FontStyle.Bold : FontStyle.Regular)) TextRenderer.DrawText(g, light.Name, font, new Rectangle((int)rect.X + 61, (int)rect.Y + 10, (int)rect.Width - 68, 24), Glass.Ink, TextFormatFlags.EndEllipsis);
+            bool favorite = light.Id == favoriteId;
+            int starSpace = favorite ? 26 : 0;
+            using (var font = new Font("Segoe UI", 10, active ? FontStyle.Bold : FontStyle.Regular)) TextRenderer.DrawText(g, light.Name, font, new Rectangle((int)rect.X + 61, (int)rect.Y + 10, (int)rect.Width - 68 - starSpace, 24), Glass.Ink, TextFormatFlags.EndEllipsis);
+            if (favorite)
+                using (var font = new Font("Segoe UI Symbol", 11)) TextRenderer.DrawText(g, "★", font, new Rectangle((int)rect.Right - 32, (int)rect.Y + 8, 26, 26), Color.FromArgb(232, 164, 60), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             string detail = !light.Reachable ? "Unreachable" : on ? "On" : "Off";
             if (light.Reachable && on && light.State.ContainsKey("bri")) detail += "  /  " + Math.Round(Convert.ToInt32(light.State["bri"]) * 100.0 / 254) + "%";
             using (var font = new Font("Segoe UI", 8.5f)) TextRenderer.DrawText(g, detail, font, new Rectangle((int)rect.X + 61, (int)rect.Y + 34, (int)rect.Width - 68, 21), Glass.Muted, TextFormatFlags.EndEllipsis);

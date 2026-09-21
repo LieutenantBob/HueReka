@@ -19,7 +19,7 @@ namespace HueReka
         readonly GlassCanvas root = new GlassCanvas { Dock = DockStyle.Fill };
         readonly GlassPanel controls = new GlassPanel();
         readonly GlassPanel sidebar = new GlassPanel();
-        GlassButton color, warm, cool, onButton, offButton;
+        GlassButton color, warm, cool, onButton, offButton, favorite;
         readonly PairingOverlay pairingOverlay = new PairingOverlay();
         // Replaceable so tests can pair with a simulated bridge without touching saved credentials.
         internal Func<Settings, Bridge> CreateBridge = settings => new Bridge(settings);
@@ -108,6 +108,8 @@ namespace HueReka
             lightDetail.SetBounds(34, 81, 500, 26); lightDetail.Anchor = selected.Anchor; controls.Controls.Add(lightDetail);
             onButton = Button("On", () => Change(light => true, light => new { on = true })); onButton.SetBounds(559, 34, 78, 43); onButton.Anchor = AnchorStyles.Top | AnchorStyles.Right; controls.Controls.Add(onButton);
             offButton = Button("Off", () => Change(light => true, light => new { on = false })); offButton.SetBounds(642, 34, 78, 43); offButton.Anchor = onButton.Anchor; controls.Controls.Add(offButton);
+            favorite = Button("☆", ToggleFavorite); favorite.Font = new Font("Segoe UI Symbol", 14); favorite.SetBounds(500, 34, 48, 43); favorite.Anchor = onButton.Anchor; controls.Controls.Add(favorite);
+            tips.SetToolTip(favorite, "Make this light your favorite. HueReka selects it for you every time it opens.");
             orb.SetBounds(43, 125, 267, 236); controls.Controls.Add(orb);
             var orbCaption = AddLabel(controls, "A little atmosphere, on demand.", 29, 361, 300, 24, 9, false); orbCaption.TextAlign = ContentAlignment.MiddleCenter; orbCaption.ForeColor = Glass.Muted;
             AddLabel(controls, "BRIGHTNESS", 365, 154, 170, 25, 9, true).ForeColor = Glass.Muted;

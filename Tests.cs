@@ -150,6 +150,7 @@ namespace HueReka
                 WaitIdle(window);
                 Assert(calls.Skip(keyboardCalls).Any(call => call.StartsWith("PUT /api/test-key/lights/1/state")), "Space activates the custom button");
                 MultiSelectTests(window, calls, lightList, on);
+                FavoriteTests(window, bridge, lightList);
                 PairingOverlayTests(window);
                 window.Close();
             }
@@ -223,6 +224,43 @@ namespace HueReka
             typeof(MainWindow).GetMethod("OnKeyDown", Private).Invoke(window, new object[] { new KeyEventArgs(Keys.Escape) });
             WaitIdle(window);
             Assert(!overlay.Visible && root.Enabled && Field<Label>(window, "status").Text.StartsWith("Cancelled"), "Escape cancels pairing and unblocks the app");
+        }
+
+        static void FavoriteTests(MainWindow window, Bridge bridge, LightList lightList)
+        {
+            var favorite = Field<GlassButton>(window, "favorite");
+            var savedCopies = new List<string>();
+            window.SaveSettings = settings => savedCopies.Add(settings.FavoriteLight);
+            Show(window, DisplayLights());
+            Select(lightList, 2);
+            Assert(favorite.Enabled && favorite.Text.StartsWith("\u2606"), "Favorite button offers to star a single light");
+            favorite.PerformClick(); WaitIdle(window);
+            Assert(Field<Settings>(window, "saved").FavoriteLight == "3" && savedCopies.Last() == "3", "Starring a light saves it as the favorite");
+            Assert(favorite.Text.StartsWith("\u2605") && lightList.FavoriteId == "3", "Favorite shows as starred in the button and the list");
+            using (var bitmap = new Bitmap(window.Width, window.Height)) { window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, window.Size)); bitmap.Save("preview-favorite.png"); }
+            Select(lightList, 0, 1);
+            Assert(!favorite.Enabled, "Only a single light can be made the favorite");
+
+            using (var reopened = new MainWindow(true))
+            {
+                typeof(MainWindow).GetField("saved", Private).SetValue(reopened, new Settings { FavoriteLight = "3" });
+                typeof(MainWindow).GetField("bridge", Private).SetValue(reopened, bridge);
+                Show(reopened, DisplayLights());
+                var reopenedList = Field<LightList>(reopened, "lights");
+                Assert(reopenedList.SelectedItems.Cast<Light>().Single().Id == "3", "The favorite light is pre-selected when the app opens");
+            }
+            using (var reopened = new MainWindow(true))
+            {
+                typeof(MainWindow).GetField("saved", Private).SetValue(reopened, new Settings { FavoriteLight = "99" });
+                typeof(MainWindow).GetField("bridge", Private).SetValue(reopened, bridge);
+                Show(reopened, DisplayLights());
+                Assert(Field<LightList>(reopened, "lights").SelectedIndices.Cast<int>().Single() == 0, "A missing favorite falls back to the first light");
+            }
+
+            Select(lightList, 2);
+            favorite.PerformClick(); WaitIdle(window);
+            Assert(Field<Settings>(window, "saved").FavoriteLight == "" && savedCopies.Last() == "" && favorite.Text.StartsWith("\u2606"), "Clicking again removes the favorite");
+            window.SaveSettings = settings => { };
         }
 
         static void MultiSelectTests(MainWindow window, List<string> calls, LightList lightList, GlassButton on)
