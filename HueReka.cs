@@ -16,9 +16,9 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("HueReka!")]
 [assembly: AssemblyDescription("Local control for Philips Hue lights")]
 [assembly: AssemblyProduct("HueReka!")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
-[assembly: AssemblyInformationalVersion("1.0.1")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyInformationalVersion("1.1.0")]
 
 namespace HueReka
 {

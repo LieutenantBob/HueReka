@@ -2,6 +2,11 @@
 
 All notable changes to HueReka! are listed here.
 
+## [1.1.0] - 2026-09-21
+
+### Added
+- **Favorite light:** click the star next to a light's name to make it your favorite. HueReka selects it every time it opens, and the list marks it with a star. Click the star again to remove it. The favorite is saved with your bridge pairing and kept when you use **Pair again**.
+
 ## [1.0.1] - 2026-09-15
 
 ### Changed
