@@ -89,6 +89,8 @@ Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
                 if (command == "pair")
                 {
                     var settings = new Settings { Address = Bridge.ValidateAddress(args[1]) };
+                    try { settings.KeepPreferencesFrom(load()); }
+                    catch (Exception) { } // a broken old file must never block pairing
                     var pairingBridge = create(settings);
                     output.WriteLine("Press the round link button on your Hue Bridge. Waiting up to 90 seconds...");
                     await pairingBridge.PairWhenReady(TimeSpan.FromSeconds(90), null, CancellationToken.None);
@@ -186,6 +188,12 @@ Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
             int pairCalls = calls.Count;
             Check(await run(new[] { "pair", "192.168.1.2" }) == 0 && paired, "Pair saves credentials");
             Check(calls.Skip(pairCalls).Count(call => call.StartsWith("POST")) == 3, "Pair waits for the link button instead of failing");
+            Settings kept = null;
+            Check(await Execute(new[] { "pair", "192.168.1.3" }, () => new Settings { Address = "192.168.1.2", Key = "old", CustomPalettes = new List<Palette> { new Palette("Kept", PaletteEntry.White(2200), PaletteEntry.White(5000)) }, AmbienceSpeedSeconds = 45 }, create, s => kept = s, output, error) == 0
+                && kept != null && kept.Address == "192.168.1.3" && kept.CustomPalettes.Single().Name == "Kept" && kept.AmbienceSpeedSeconds == 45, "Pairing again keeps palettes and ambience choices");
+            kept = null;
+            Check(await Execute(new[] { "pair", "192.168.1.3" }, () => { throw new InvalidOperationException("unreadable"); }, create, s => kept = s, output, error) == 0
+                && kept != null && kept.CustomPalettes.Count == 0, "A broken saved file does not block pairing");
             Check(await Execute(new[] { "list" }, () => new Settings(), create, s => {}, output, error) == 1, "Missing credentials");
         }
         static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
