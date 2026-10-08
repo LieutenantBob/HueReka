@@ -126,7 +126,9 @@ namespace HueReka
             foreach (string ip in found.Where(candidate => candidate != saved.Address))
             {
                 bool reconnected = true;
-                try { await Open(new Settings { Address = ip, Key = saved.Key, Fingerprint = saved.Fingerprint, FavoriteLight = saved.FavoriteLight }); }
+                var moved = new Settings { Address = ip, Key = saved.Key, Fingerprint = saved.Fingerprint, FavoriteLight = saved.FavoriteLight };
+                moved.KeepPreferencesFrom(saved);
+                try { await Open(moved); }
                 catch (WebException) { reconnected = false; }
                 catch (InvalidOperationException) { reconnected = false; }
                 if (reconnected) return ip;
@@ -137,6 +139,7 @@ namespace HueReka
         async Task PairWith(string ip)
         {
             var connection = new Settings { Address = ip, FavoriteLight = ip == saved.Address ? saved.FavoriteLight : "" };
+            connection.KeepPreferencesFrom(saved);
             var candidate = CreateBridge(connection);
             ShowPairingOverlay(ip);
             try

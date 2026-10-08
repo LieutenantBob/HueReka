@@ -194,6 +194,7 @@ namespace HueReka
                 Thread.Sleep(20); return NotPressed;
             });
 
+            Field<Settings>(window, "saved").CustomPalettes = new List<Palette> { new Palette("Kept", PaletteEntry.White(2200), PaletteEntry.White(5000)) };
             StartPairing(window);
             WaitUntil(() => showing(PairingOverlay.Stage.Waiting), "Pairing shows the full-window overlay");
             Assert(!root.Enabled, "The app is blocked behind the pairing overlay");
@@ -203,6 +204,7 @@ namespace HueReka
             pressed = true;
             WaitIdle(window);
             Assert(!overlay.Visible && root.Enabled, "Overlay closes once the bridge pairs");
+            Assert(Field<Settings>(window, "saved").CustomPalettes.Single().Name == "Kept", "Pairing a bridge keeps the user's palettes");
             Assert(Field<LightList>(window, "lights").Items.Cast<Light>().Any(light => light.Name == "Porch"), "Paired bridge's lights are shown");
 
             pressed = false;

@@ -23,6 +23,27 @@ namespace HueReka
             PaletteTests();
             PlannerTests();
             RunnerTests();
+            SettingsTests();
+        }
+
+        static void SettingsTests()
+        {
+            var original = new Settings { Address = "192.168.1.2", Key = "k", FavoriteLight = "4",
+                CustomPalettes = new List<Palette> { new Palette("Cozy", PaletteEntry.Rgb(255, 0, 0), PaletteEntry.White(2700)) },
+                AmbiencePalette = "Cozy", AmbienceTogether = true, AmbienceSpeedSeconds = 45, AmbienceBrightness = 30 };
+            var copy = Json.Serializer.Deserialize<Settings>(Json.Serializer.Serialize(original));
+            Assert(copy.CustomPalettes.Single().Name == "Cozy" && copy.CustomPalettes[0].Entries[0].R == 255 && copy.CustomPalettes[0].Entries[1].Kelvin == 2700, "Custom palettes survive saving");
+            Assert(copy.AmbiencePalette == "Cozy" && copy.AmbienceTogether && copy.AmbienceSpeedSeconds == 45 && copy.AmbienceBrightness == 30, "Ambience choices survive saving");
+            Assert(!Json.Serializer.Serialize(original).Contains("IsWhite"), "Only palette data is saved");
+            var old = Json.Serializer.Deserialize<Settings>("{\"Address\":\"192.168.1.2\",\"Key\":\"k\",\"Fingerprint\":\"\",\"FavoriteLight\":\"1\"}");
+            Assert(old.CustomPalettes.Count == 0 && old.AmbiencePalette == "Sunset" && !old.AmbienceTogether && old.AmbienceSpeedSeconds == 120 && old.AmbienceBrightness == 70, "Settings from older versions get ambience defaults");
+            var next = new Settings { Address = "192.168.1.9" };
+            next.KeepPreferencesFrom(original);
+            Assert(next.Address == "192.168.1.9" && next.Key == "" && next.FavoriteLight == "" && next.CustomPalettes.Single().Name == "Cozy" && next.AmbienceSpeedSeconds == 45 && next.AmbienceTogether, "Pairing again keeps palettes and ambience choices, not the bridge's details");
+            next.CustomPalettes[0].Name = "Changed";
+            Assert(original.CustomPalettes[0].Name == "Cozy", "Kept palettes are copies");
+            var fromBroken = new Settings(); fromBroken.KeepPreferencesFrom(new Settings { CustomPalettes = null });
+            Assert(fromBroken.CustomPalettes != null && fromBroken.CustomPalettes.Count == 0, "A missing palette list is kept as empty");
         }
 
         static void PlannerTests()

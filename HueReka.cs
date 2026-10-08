@@ -58,6 +58,17 @@ namespace HueReka
         public string FavoriteLight = "";
         // Palettes belong to the user, not the bridge, so they are kept when pairing again.
         public List<Palette> CustomPalettes = new List<Palette>();
+        public string AmbiencePalette = Palettes.DefaultName;
+        public bool AmbienceTogether;
+        public int AmbienceSpeedSeconds = AmbienceSpeed.DefaultSeconds;
+        public int AmbienceBrightness = AmbienceSpeed.DefaultBrightness;
+        // Copies what belongs to the user rather than the bridge, for a new pairing or a moved bridge.
+        public void KeepPreferencesFrom(Settings previous)
+        {
+            CustomPalettes = (previous.CustomPalettes ?? new List<Palette>()).Where(palette => palette != null).Select(palette => palette.Copy()).ToList();
+            AmbiencePalette = previous.AmbiencePalette; AmbienceTogether = previous.AmbienceTogether;
+            AmbienceSpeedSeconds = previous.AmbienceSpeedSeconds; AmbienceBrightness = previous.AmbienceBrightness;
+        }
         static string FileName { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HueReka!", "connection.dat"); } }
         public void Save()
         {
