@@ -111,22 +111,37 @@ namespace HueReka
             Assert(Get<GlassButton>(panel, "editPalette").Enabled && Get<GlassButton>(panel, "deletePalette").Enabled, "Custom palettes can be edited and deleted");
 
             window.ShowEditor = editor => {
+                Get<TextBox>(editor, "name").Text = "Breeze";
+                editor.AddEntry(PaletteEntry.White(5000)); editor.AddEntry(PaletteEntry.White(6500));
+                editor.Save(); return editor.DialogResult;
+            };
+            Get<GlassButton>(panel, "newPalette").PerformClick();
+            var choices = Get<ComboBox>(panel, "palettes");
+            int calmIndex = choices.Items.Cast<Palette>().ToList().FindIndex(p => p.Name == "Calm");
+            Assert(saved.CustomPalettes.Select(p => p.Name).SequenceEqual(new[] { "Calm", "Breeze" }) && choices.Items.Count - 1 == calmIndex + 1, "New palettes go at the end of the list");
+            choices.SelectedIndex = calmIndex;
+
+            window.ShowEditor = editor => {
                 Assert(Get<TextBox>(editor, "name").Text == "Calm", "Edit opens the chosen palette");
                 Get<TextBox>(editor, "name").Text = "Calmer"; editor.Save(); return editor.DialogResult;
             };
             Get<GlassButton>(panel, "editPalette").PerformClick();
-            Assert(saved.CustomPalettes.Select(p => p.Name).SequenceEqual(new[] { "Calmer" }) && panel.SelectedPalette.Name == "Calmer", "Editing replaces the palette instead of adding one");
+            Assert(saved.CustomPalettes.Select(p => p.Name).SequenceEqual(new[] { "Calmer", "Breeze" }) && panel.SelectedPalette.Name == "Calmer", "Editing replaces the palette instead of adding one");
+            Assert(choices.SelectedIndex == calmIndex && ((Palette)choices.Items[calmIndex]).Name == "Calmer", "An edited palette keeps its place in the list");
 
             window.ShowEditor = editor => DialogResult.Cancel;
             Get<GlassButton>(panel, "newPalette").PerformClick();
-            Assert(saved.CustomPalettes.Count == 1, "Cancel changes nothing");
+            Assert(saved.CustomPalettes.Count == 2, "Cancel changes nothing");
 
             window.ConfirmDelete = palette => false;
             Get<GlassButton>(panel, "deletePalette").PerformClick();
-            Assert(saved.CustomPalettes.Count == 1, "Declining the question keeps the palette");
+            Assert(saved.CustomPalettes.Count == 2, "Declining the question keeps the palette");
             window.ConfirmDelete = palette => true;
             Get<GlassButton>(panel, "deletePalette").PerformClick();
-            Assert(saved.CustomPalettes.Count == 0 && panel.SelectedPalette.Name == "Sunset" && !Get<GlassButton>(panel, "deletePalette").Enabled, "Delete removes the palette and falls back to Sunset");
+            Assert(saved.CustomPalettes.Select(p => p.Name).SequenceEqual(new[] { "Breeze" }) && panel.SelectedPalette.Name == "Sunset" && !Get<GlassButton>(panel, "deletePalette").Enabled, "Delete removes the palette and falls back to Sunset");
+            choices.SelectedIndex = choices.Items.Cast<Palette>().ToList().FindIndex(p => p.Name == "Breeze");
+            Get<GlassButton>(panel, "deletePalette").PerformClick();
+            Assert(saved.CustomPalettes.Count == 0, "Every custom palette can be deleted");
 
             window.SaveSettings = settings => { throw new InvalidOperationException("disk full"); };
             window.ShowEditor = editor => { Get<TextBox>(editor, "name").Text = "Lost"; editor.AddEntry(PaletteEntry.White(2200)); editor.AddEntry(PaletteEntry.White(3000)); editor.Save(); return editor.DialogResult; };
@@ -174,6 +189,7 @@ namespace HueReka
             Tests.WaitUntil(() => Tests.Field<AmbienceRunner>(window, "ambience") != null, "Ambience starts again");
             start.PerformClick();
             Assert(Tests.Field<AmbienceRunner>(window, "ambience") == null && !panel.Running && start.Text == "Start ambience", "Stop ends the ambience");
+            Assert(Tests.Field<Label>(window, "status").Text == "Ambience stopped. Your lights finish their current fade, then stay as they are.", "Stop says the lights finish their fade");
             Pause(30); int afterStop = Count(calls); Pause(120);
             Assert(Puts(calls, afterStop).Count == 0, "No commands are sent after Stop");
 

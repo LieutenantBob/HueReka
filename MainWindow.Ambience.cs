@@ -30,7 +30,7 @@ namespace HueReka
             lightTab.Click += (sender, args) => ShowTab(false);
             ambienceTab.Click += (sender, args) => ShowTab(true);
             ambiencePanel.StartRequested += async (sender, args) => await StartAmbience(null);
-            ambiencePanel.StopRequested += (sender, args) => StopAmbience("Ambience stopped. Your lights keep their current colors.");
+            ambiencePanel.StopRequested += (sender, args) => StopAmbience("Ambience stopped. Your lights finish their current fade, then stay as they are.");
             ambiencePanel.ChoicesChanged += async (sender, args) => { if (ambience != null) await StartAmbience(ambience.LightIds); };
             ShowTab(false);
             ShowEditor = editor => editor.ShowDialog(this);
@@ -136,8 +136,9 @@ namespace HueReka
             using (var editor = new PaletteEditor(existing, taken))
             {
                 if (ShowEditor(editor) != DialogResult.OK || editor.Result == null) return;
-                var customs = Palettes.Custom(saved).Where(palette => !SameName(palette, existing)).ToList();
-                customs.Add(editor.Result);
+                // An edited palette keeps its place in the list; a new one goes at the end.
+                var customs = Palettes.Custom(saved).Select(palette => SameName(palette, existing) ? editor.Result : palette).ToList();
+                if (!customs.Contains(editor.Result)) customs.Add(editor.Result);
                 SaveCustomPalettes(customs, editor.Result.Name, "Palette " + editor.Result.Name + (existing == null ? " saved." : " updated."));
             }
         }
