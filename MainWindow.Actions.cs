@@ -17,7 +17,7 @@ namespace HueReka
         const string EmptyText = "Your lights will appear here.\n\nConnect to your bridge below\nto get started.";
         bool lostContact;
 
-        public static int Brightness(int percent) { return Math.Max(1, Math.Min(254, (int)Math.Round(percent * 254.0 / 100))); }
+        public static int Brightness(int percent) { return HueColor.Brightness(percent); }
         static bool IsOn(Light light) { return light.State.ContainsKey("on") && Convert.ToBoolean(light.State["on"]); }
         static bool SupportsBrightness(Light light) { return light.State.ContainsKey("bri"); }
         static bool SupportsColor(Light light) { return light.State.ContainsKey("hue") && light.State.ContainsKey("sat"); }

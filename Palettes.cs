@@ -98,6 +98,8 @@ namespace HueReka
             }
             return new HueHsv { Hue = (int)Math.Round(hue / 360 * 65535), Sat = max == 0 ? 0 : (int)Math.Round(delta / max * 254), Bri = (int)Math.Round(max * 254) };
         }
+        // Percent (1-100) to the bridge's brightness (1-254).
+        public static int Brightness(int percent) { return Math.Max(1, Math.Min(254, (int)Math.Round(percent * 254.0 / 100))); }
         public static int Mired(int kelvin, int minCt, int maxCt) { return Math.Max(minCt, Math.Min(maxCt, (int)Math.Round(1000000.0 / kelvin))); }
         // Tanner Helland's black-body approximation: on-screen previews of whites, and whites on color-only bulbs.
         public static Color FromKelvin(int kelvin)

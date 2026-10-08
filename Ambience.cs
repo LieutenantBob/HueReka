@@ -61,7 +61,8 @@ namespace HueReka
         public static double PaceFactor(int seed, string lightId)
         {
             int hash = seed;
-            unchecked { foreach (char c in lightId ?? "") hash = hash * 31 + c; }
+            // Mixed before seeding: Random gives nearly evenly spaced values for consecutive seeds, and ids are often 1, 2, 3...
+            unchecked { foreach (char c in lightId ?? "") hash = hash * 31 + c; hash *= (int)0x9E3779B1; hash ^= (int)((uint)hash >> 15); hash *= (int)0x85EBCA6B; hash ^= (int)((uint)hash >> 13); }
             return 0.75 + new Random(hash).NextDouble() * 0.5;
         }
         public static int StepSeconds(AmbienceOptions options, string lightId)
@@ -74,7 +75,7 @@ namespace HueReka
             var current = light.State;
             bool color = current.ContainsKey("hue") && current.ContainsKey("sat"), white = current.ContainsKey("ct");
             var state = new Dictionary<string, object> { { "on", true } };
-            if (current.ContainsKey("bri")) state["bri"] = MainWindow.Brightness(brightnessPercent);
+            if (current.ContainsKey("bri")) state["bri"] = HueColor.Brightness(brightnessPercent);
             if (entry.IsWhite() && white) state["ct"] = HueColor.Mired(entry.Kelvin, light.MinCt, light.MaxCt);
             else if (entry.IsWhite() && color) { var tint = HueColor.FromKelvin(entry.Kelvin); AddColor(state, HueColor.FromRgb(tint.R, tint.G, tint.B)); }
             else if (!entry.IsWhite() && color) AddColor(state, HueColor.FromRgb(entry.R, entry.G, entry.B));
@@ -124,6 +125,7 @@ namespace HueReka
         readonly List<Light> lights;
         readonly HashSet<string> excluded = new HashSet<string>();
         readonly object gate = new object();
+        bool lost;
 
         public AmbienceRunner(Bridge bridge, AmbienceOptions options, IEnumerable<Light> lights)
         {
@@ -146,42 +148,96 @@ namespace HueReka
 
         public async Task Run(IProgress<string> report, CancellationToken cancel)
         {
-            var steps = lights.ToDictionary(light => light.Id, light => 0);
-            var due = lights.ToDictionary(light => light.Id, light => Clock());
-            bool lost = false;
-            try
+            lost = false;
+            try { if (options.Mode == AmbienceMode.Together) await RunTogether(report, cancel); else await RunDrift(report, cancel); }
+            catch (OperationCanceledException) { }
+        }
+
+        // One shared step and schedule. A light that missed its command retries with the current step, so it never lags behind,
+        // and the schedule advances from the planned time, so command delays never add up.
+        async Task RunTogether(IProgress<string> report, CancellationToken cancel)
+        {
+            int step = 0; DateTime due = Clock(); TimeSpan fade = FirstFade;
+            var retryAt = new Dictionary<string, DateTime>();
+            while (true)
             {
-                while (true)
+                cancel.ThrowIfCancellationRequested();
+                if (Stopped(report)) return;
+                if (Clock() >= due)
                 {
-                    cancel.ThrowIfCancellationRequested();
-                    if (LightCount == 0) { Say(report, "Ambience stopped: every light was changed by hand."); return; }
+                    fade = step == 0 ? FirstFade : TimeSpan.FromSeconds(options.SpeedSeconds);
+                    retryAt.Clear(); // this round reaches every light, including any still waiting to retry
                     for (int i = 0; i < lights.Count; i++)
                     {
-                        var light = lights[i];
-                        if (!Active(light) || due[light.Id] > Clock()) continue;
-                        int step = steps[light.Id];
-                        TimeSpan fade = step == 0 ? FirstFade : TimeSpan.FromSeconds(AmbiencePlanner.StepSeconds(options, light.Id));
-                        var entries = options.Palette.Entries;
-                        var entry = entries[AmbiencePlanner.EntryIndex(options.Mode, step, i, lights.Count, entries.Count)];
-                        bool retry = false;
-                        try
-                        {
-                            await bridge.Set(light.Id, AmbiencePlanner.State(entry, light, options.BrightnessPercent, (int)(fade.TotalMilliseconds / 100)));
-                            if (lost) { lost = false; Say(report, "Back in touch with the bridge. The ambience continues."); }
-                        }
-                        catch (WebException) { retry = true; if (!lost) { lost = true; Say(report, "Lost contact with the bridge. The ambience will keep trying."); } }
-                        catch (Exception error) { Say(report, light.Name + ": " + error.Message.Replace("Hue Bridge: ", "")); }
-                        if (!retry) steps[light.Id] = step + 1;
-                        due[light.Id] = Clock() + (retry && RetryDelay < fade ? RetryDelay : fade);
-                        await Delay(CommandSpacing, cancel);
+                        DateTime attempted = Clock();
+                        if (Active(lights[i]) && !await Send(lights[i], i, step, fade, report, cancel)) retryAt[lights[i].Id] = attempted + RetryDelay;
                     }
-                    var active = lights.Where(Active).ToList();
-                    if (active.Count == 0) continue;
-                    TimeSpan wait = active.Min(light => due[light.Id]) - Clock();
-                    if (wait > TimeSpan.Zero) await Delay(wait, cancel);
+                    step++; due = NotBefore(due + fade);
                 }
+                foreach (string id in retryAt.Where(pair => pair.Value <= Clock() && pair.Value < due).Select(pair => pair.Key).ToList())
+                {
+                    int i = lights.FindIndex(light => light.Id == id); DateTime attempted = Clock();
+                    if (!Active(lights[i])) retryAt.Remove(id);
+                    else if (await Send(lights[i], i, step - 1, fade, report, cancel)) retryAt.Remove(id);
+                    else retryAt[id] = attempted + RetryDelay;
+                }
+                DateTime next = retryAt.Values.Where(time => time < due).Concat(new[] { due }).Min();
+                if (next > Clock()) await Delay(next - Clock(), cancel);
             }
-            catch (OperationCanceledException) { }
+        }
+
+        // Each light keeps its own step and pace. A light that missed its command retries the same step soon.
+        async Task RunDrift(IProgress<string> report, CancellationToken cancel)
+        {
+            var steps = lights.ToDictionary(light => light.Id, light => 0);
+            var due = lights.ToDictionary(light => light.Id, light => Clock());
+            while (true)
+            {
+                cancel.ThrowIfCancellationRequested();
+                if (Stopped(report)) return;
+                for (int i = 0; i < lights.Count; i++)
+                {
+                    var light = lights[i];
+                    if (!Active(light) || due[light.Id] > Clock()) continue;
+                    int step = steps[light.Id];
+                    TimeSpan fade = step == 0 ? FirstFade : TimeSpan.FromSeconds(AmbiencePlanner.StepSeconds(options, light.Id));
+                    DateTime attempted = Clock();
+                    if (await Send(light, i, step, fade, report, cancel)) { steps[light.Id] = step + 1; due[light.Id] = NotBefore(due[light.Id] + fade); }
+                    else due[light.Id] = attempted + (RetryDelay < fade ? RetryDelay : fade);
+                }
+                var active = lights.Where(Active).ToList();
+                if (active.Count == 0) continue;
+                TimeSpan wait = active.Min(light => due[light.Id]) - Clock();
+                if (wait > TimeSpan.Zero) await Delay(wait, cancel);
+            }
+        }
+
+        bool Stopped(IProgress<string> report)
+        {
+            if (LightCount > 0) return false;
+            Say(report, "Ambience stopped: every light was changed by hand.");
+            return true;
+        }
+
+        // A schedule that fell behind (for example after the PC slept) restarts from now instead of rushing to catch up.
+        static DateTime NotBefore(DateTime time) { DateTime now = Clock(); return time < now ? now : time; }
+
+        // Sends one light its entry for a step, then waits out the bridge's rate limit.
+        // Returns false when the bridge couldn't be reached, so the light should try again; other errors are reported and skipped.
+        async Task<bool> Send(Light light, int index, int step, TimeSpan fade, IProgress<string> report, CancellationToken cancel)
+        {
+            var entries = options.Palette.Entries;
+            var entry = entries[AmbiencePlanner.EntryIndex(options.Mode, step, index, lights.Count, entries.Count)];
+            bool reached = true;
+            try
+            {
+                await bridge.Set(light.Id, AmbiencePlanner.State(entry, light, options.BrightnessPercent, (int)(fade.TotalMilliseconds / 100)));
+                if (lost) { lost = false; Say(report, "Back in touch with the bridge. The ambience continues."); }
+            }
+            catch (WebException) { reached = false; if (!lost) { lost = true; Say(report, "Lost contact with the bridge. The ambience will keep trying."); } }
+            catch (Exception error) { Say(report, light.Name + ": " + error.Message.Replace("Hue Bridge: ", "")); }
+            await Delay(CommandSpacing, cancel);
+            return reached;
         }
 
         static void Say(IProgress<string> report, string message) { if (report != null) report.Report(message); }

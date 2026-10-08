@@ -70,6 +70,11 @@ namespace HueReka
             Assert(factors.All(f => f >= 0.75 && f < 1.25) && factors.Distinct().Count() > 10, "Each light gets its own pace in 0.75-1.25");
             Assert(ids.All(id => AmbiencePlanner.PaceFactor(7, id) == AmbiencePlanner.PaceFactor(7, id)), "The same seed gives the same pace");
             Assert(ids.Any(id => AmbiencePlanner.PaceFactor(7, id) != AmbiencePlanner.PaceFactor(8, id)), "Another seed gives other paces");
+            // Lights are usually numbered 1, 2, 3...; their paces must not climb or fall in a visible pattern.
+            // Unmixed hashes made every other light's pace fall by the same small amount (1.249, 0.988, 1.227, 0.966...).
+            Func<List<double>, bool> monotonic = values => values.Zip(values.Skip(1), (a, b) => Math.Sign(b - a)).Distinct().Count() == 1;
+            var twelve = ids.Take(12).Select(id => AmbiencePlanner.PaceFactor(7, id)).ToList();
+            Assert(!monotonic(twelve.Where((f, i) => i % 2 == 0).ToList()) && !monotonic(twelve.Where((f, i) => i % 2 == 1).ToList()), "Consecutive light ids get unrelated paces");
             var drifting = new AmbienceOptions { Palette = Palettes.Presets[0], Mode = AmbienceMode.Drift, SpeedSeconds = 100, Seed = 7 };
             Assert(ids.All(id => AmbiencePlanner.StepSeconds(drifting, id) >= 75 && AmbiencePlanner.StepSeconds(drifting, id) <= 125), "Drift steps stay within a quarter of the speed");
             drifting.Mode = AmbienceMode.Together;
@@ -120,6 +125,7 @@ namespace HueReka
             Assert(PaletteEntry.White(2200).Label() == "2200 K white" && PaletteEntry.Rgb(255, 136, 0).Label() == "#FF8800", "Entry labels");
 
             Assert(HueColor.Mired(2000, 153, 500) == 500 && HueColor.Mired(6500, 153, 500) == 154 && HueColor.Mired(4000, 153, 500) == 250, "Kelvin to mired");
+            Assert(HueColor.Brightness(1) == 3 && HueColor.Brightness(70) == 178 && HueColor.Brightness(100) == 254 && HueColor.Brightness(0) == 1 && MainWindow.Brightness(50) == HueColor.Brightness(50), "Percent to bridge brightness");
             Assert(HueColor.Mired(6500, 200, 454) == 200 && HueColor.Mired(2000, 153, 454) == 454, "Mired clamps to the bulb's range");
             var red = HueColor.FromRgb(255, 0, 0);
             Assert(red.Hue == 0 && red.Sat == 254 && red.Bri == 254, "Red to Hue HSV");
@@ -209,6 +215,25 @@ namespace HueReka
                 }
                 Assert(attempts.Count == 4 && attempts[2] == attempts[1] && attempts[1] != attempts[0] && attempts[3] != attempts[2], "A dropped bridge makes the light retry the same step, not skip it");
                 Assert(attemptTimes[2] - attemptTimes[1] == AmbienceRunner.RetryDelay, "The retry comes after the short retry delay, not the whole fade");
+
+                // Together: a light that missed a command rejoins the current step, and the shared schedule never slips.
+                var sent = new List<Tuple<string, string, DateTime>>(); int lightTwoCalls = 0; now = start;
+                var shaky = new Bridge(new Settings { Address = "192.168.1.2", Key = "k" }, (method, path, body) => {
+                    string id = path.Split('/')[4]; DateTime asked = now; now += TimeSpan.FromMilliseconds(30); // every request takes a while
+                    if (id == "2" && ++lightTwoCalls == 2) throw new WebException("Bridge unplugged");
+                    sent.Add(Tuple.Create(id, body, asked)); return "[{\"success\":{}}]"; });
+                var three = new[] { MakeLight("1", ColorBulb), MakeLight("2", ColorBulb), MakeLight("3", ColorBulb) };
+                using (var stop = new CancellationTokenSource())
+                {
+                    AmbienceRunner.Delay = (span, cancel) => { now += span; if (sent.Count >= 15) stop.Cancel(); cancel.ThrowIfCancellationRequested(); return Task.FromResult(0); };
+                    new AmbienceRunner(shaky, new AmbienceOptions { Palette = sunset, Mode = AmbienceMode.Together, SpeedSeconds = 60, BrightnessPercent = 50, Seed = 1 }, three).Run(null, stop.Token).GetAwaiter().GetResult();
+                }
+                var firsts = sent.Where(call => call.Item1 == "1").ToList();
+                var rounds = firsts.Select(first => sent.Where(call => call.Item3 >= first.Item3 && call.Item3 < first.Item3 + TimeSpan.FromSeconds(1)).ToList()).ToList();
+                var retried = sent.Where(call => call.Item1 == "2").ToList()[1];
+                Assert(firsts.Count == 5 && retried.Item2 == firsts[1].Item2 && retried.Item3 > firsts[1].Item3 + AmbienceRunner.RetryDelay - TimeSpan.FromSeconds(1) && retried.Item3 < firsts[2].Item3, "A light that missed a step gets that same step on its retry");
+                Assert(rounds.Skip(2).All(round => round.Count == 3 && round.Select(call => call.Item2).Distinct().Count() == 1 && round.Select(call => call.Item1).SequenceEqual(new[] { "1", "2", "3" })), "After a missed command, every light gets the same entry in every round");
+                Assert(firsts.Skip(1).Zip(firsts.Skip(2), (a, b) => b.Item3 - a.Item3).All(gap => gap == TimeSpan.FromSeconds(60)), "Together rounds stay exactly one fade apart, whatever the commands' delays");
 
                 // The runner keeps its own copy of the options.
                 var mine = new AmbienceOptions { Palette = sunset, SpeedSeconds = 60 };

@@ -203,7 +203,7 @@ Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
                 if (command == "brightness")
                 {
                     if (!selected.State.ContainsKey("bri")) throw new ArgumentException("This light does not support brightness.");
-                    state = new { on = true, bri = MainWindow.Brightness(Int32.Parse(args[2])) };
+                    state = new { on = true, bri = HueColor.Brightness(Int32.Parse(args[2])) };
                 }
                 else if (command == "color")
                 {
