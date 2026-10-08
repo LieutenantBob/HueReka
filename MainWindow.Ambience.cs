@@ -160,6 +160,15 @@ namespace HueReka
             }
             ambiencePanel.ShowPalettes(Palettes.All(saved), select);
             status.Text = message;
+            if (ambience != null) RestartAmbience(message);
+        }
+
+        // ShowPalettes raises no ChoicesChanged, so a running ambience is restarted on its lights with the shown palette.
+        void RestartAmbience(string message)
+        {
+            var before = ambience;
+            var restart = StartAmbience(ambience.LightIds); // runs until stopped and catches its own errors, like the event handlers
+            if (ambience != null && ambience != before) status.Text = message + " The ambience now plays " + ambience.Options.Palette.Name + ".";
         }
 
         // Lights changed by hand leave the ambience; when none are left it ends right away.

@@ -30,6 +30,7 @@ namespace HueReka
                 EditorTests();
                 PaletteManagement(window);
                 RunAndStop(window, calls);
+                PaletteChangesWhileRunning(window);
                 ClosingStops(calls);
             }
             finally { AmbienceRunner.Delay = oldDelay; AmbienceRunner.Clock = oldClock; }
@@ -183,6 +184,34 @@ namespace HueReka
             typeof(MainWindow).GetMethod("Run", Tests.Private).Invoke(window, new object[] { allOff });
             Tests.WaitIdle(window);
             Assert(Tests.Field<AmbienceRunner>(window, "ambience") == null, "All lights off stops the ambience");
+            Tests.Field<GlassButton>(window, "lightTab").PerformClick();
+        }
+
+        static void PaletteChangesWhileRunning(MainWindow window)
+        {
+            var panel = Tests.Field<AmbiencePanel>(window, "ambiencePanel"); var lightList = Tests.Field<LightList>(window, "lights");
+            window.SaveSettings = settings => { };
+            window.ShowEditor = editor => { Get<TextBox>(editor, "name").Text = "Glow"; editor.AddEntry(PaletteEntry.Rgb(10, 20, 30)); editor.AddEntry(PaletteEntry.White(2200)); editor.Save(); return editor.DialogResult; };
+            Tests.Field<GlassButton>(window, "ambienceTab").PerformClick();
+            Get<GlassButton>(panel, "newPalette").PerformClick();
+            Tests.Show(window, Tests.DisplayLights()); Tests.Select(lightList, 0, 1);
+            Get<GlassButton>(panel, "start").PerformClick();
+            Tests.WaitUntil(() => { var now = Tests.Field<AmbienceRunner>(window, "ambience"); return now != null && now.Options.Palette.Name == "Glow"; }, "Ambience starts on the custom palette");
+            var runner = Tests.Field<AmbienceRunner>(window, "ambience"); var lights = runner.LightIds.ToList();
+
+            window.ShowEditor = editor => { Get<TextBox>(editor, "name").Text = "Glow 2"; editor.AddEntry(PaletteEntry.White(5000)); editor.Save(); return editor.DialogResult; };
+            Get<GlassButton>(panel, "editPalette").PerformClick();
+            var edited = Tests.Field<AmbienceRunner>(window, "ambience");
+            Assert(edited != null && edited != runner && edited.Options.Palette.Name == "Glow 2" && edited.Options.Palette.Entries.Count == 3 && edited.LightIds.SequenceEqual(lights), "Editing the running palette restarts the ambience with the new palette on the same lights");
+            Assert(Tests.Field<Label>(window, "status").Text.StartsWith("Palette Glow 2 updated."), "The save message stays visible after the restart");
+
+            window.ConfirmDelete = name => true;
+            Get<GlassButton>(panel, "deletePalette").PerformClick();
+            var fallback = Tests.Field<AmbienceRunner>(window, "ambience");
+            Assert(fallback != null && fallback != edited && fallback.Options.Palette.Name == "Sunset" && fallback.LightIds.SequenceEqual(lights), "Deleting the running palette restarts the ambience on Sunset");
+
+            Get<GlassButton>(panel, "start").PerformClick();
+            Assert(Tests.Field<AmbienceRunner>(window, "ambience") == null && !panel.Running, "The ambience stops at the end");
             Tests.Field<GlassButton>(window, "lightTab").PerformClick();
         }
 
