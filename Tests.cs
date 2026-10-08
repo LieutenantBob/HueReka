@@ -13,11 +13,11 @@ namespace HueReka
 {
     static class Tests
     {
-        const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
+        internal const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
         const string NotPressed = "[{\"error\":{\"type\":101,\"description\":\"link button not pressed\"}}]";
 
         static void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
-        static T Field<T>(MainWindow window, string name) { return (T)typeof(MainWindow).GetField(name, Private).GetValue(window); }
+        internal static T Field<T>(MainWindow window, string name) { return (T)typeof(MainWindow).GetField(name, Private).GetValue(window); }
 
         public static void Run()
         {
@@ -31,7 +31,7 @@ namespace HueReka
             PairingTests();
             var calls = new List<string>();
             var bridge = new Bridge(new Settings { Address = "192.168.1.2" }, (method, path, body) => {
-                calls.Add(method + " " + path + " " + body);
+                lock (calls) calls.Add(method + " " + path + " " + body);
                 if (path == "/api") return "[{\"success\":{\"username\":\"test-key\"}}]";
                 if (method == "GET") return "{\"1\":{\"name\":\"Desk\",\"state\":{\"on\":true,\"bri\":127,\"reachable\":true}},\"2\":{\"name\":\"Plug\",\"state\":{\"on\":false,\"reachable\":false}}}";
                 Assert(Json.Map(Json.Parse(body)).ContainsKey("on"), "Command body");
@@ -91,7 +91,7 @@ namespace HueReka
             }
         }
 
-        static List<Light> DisplayLights()
+        internal static List<Light> DisplayLights()
         {
             return new List<Light> {
                 new Light("1", Json.Map(Json.Parse("{\"name\":\"Living room\",\"state\":{\"on\":true,\"bri\":183,\"hue\":7600,\"sat\":135,\"ct\":300,\"reachable\":true}}"))),
@@ -101,20 +101,20 @@ namespace HueReka
             };
         }
 
-        static void Select(ListBox list, params int[] indexes)
+        internal static void Select(ListBox list, params int[] indexes)
         {
             list.ClearSelected();
             foreach (int index in indexes) list.SetSelected(index, true);
         }
 
-        static void WaitIdle(MainWindow window)
+        internal static void WaitIdle(MainWindow window)
         {
             var deadline = DateTime.UtcNow.AddSeconds(5);
             while (Field<bool>(window, "busy") && DateTime.UtcNow < deadline) { Application.DoEvents(); Thread.Sleep(10); }
             Assert(!Field<bool>(window, "busy"), "UI recovers after request");
         }
 
-        static void Show(MainWindow window, List<Light> lights) { typeof(MainWindow).GetMethod("ShowLights", Private).Invoke(window, new object[] { lights }); Application.DoEvents(); }
+        internal static void Show(MainWindow window, List<Light> lights) { typeof(MainWindow).GetMethod("ShowLights", Private).Invoke(window, new object[] { lights }); Application.DoEvents(); }
 
         static void WindowTests(Bridge bridge, List<string> calls)
         {
@@ -152,12 +152,13 @@ namespace HueReka
                 Assert(calls.Skip(keyboardCalls).Any(call => call.StartsWith("PUT /api/test-key/lights/1/state")), "Space activates the custom button");
                 MultiSelectTests(window, calls, lightList, on);
                 FavoriteTests(window, bridge, lightList);
+                AmbienceWindowTests.Run(window, calls);
                 PairingOverlayTests(window);
                 window.Close();
             }
         }
 
-        static void WaitUntil(Func<bool> condition, string message)
+        internal static void WaitUntil(Func<bool> condition, string message)
         {
             var deadline = DateTime.UtcNow.AddSeconds(5);
             while (!condition() && DateTime.UtcNow < deadline) { Application.DoEvents(); Thread.Sleep(5); }
@@ -166,7 +167,7 @@ namespace HueReka
 
         // Captures the overlay itself: Form.DrawToBitmap paints sibling controls in reverse z-order,
         // so a whole-window capture would show the app on top of the overlay.
-        static void Screenshot(Control control, string file)
+        internal static void Screenshot(Control control, string file)
         {
             using (var bitmap = new Bitmap(control.Width, control.Height)) { control.DrawToBitmap(bitmap, new Rectangle(Point.Empty, control.Size)); bitmap.Save(file); }
         }

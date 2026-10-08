@@ -58,10 +58,12 @@ namespace HueReka
             BuildHeader();
             BuildSidebar();
             BuildControls();
+            BuildAmbience();
             status.SetBounds(35, 757, 1047, 49); status.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; root.Controls.Add(status);
             WireEvents();
             try { saved = preview ? new Settings() : Settings.Load(); SetAddress(saved.Address); status.Text = "Ready when you are."; }
             catch (Exception) { saved = new Settings(); status.Text = "Your saved connection could not be read. Press Connect to pair your bridge again."; }
+            ShowAmbienceChoices();
             allRow.Enabled = false; UpdateSelection();
         }
 
@@ -71,7 +73,7 @@ namespace HueReka
             AddLabel(root, "HueReka!", 85, 27, 220, 35, 18, true);
             connectionBadge.SetBounds(780, 25, 300, 35); connectionBadge.Anchor = AnchorStyles.Top | AnchorStyles.Right; root.Controls.Add(connectionBadge);
             AddLabel(root, "Set the mood.", 32, 99, 650, 54, 32, true);
-            AddLabel(root, "A little light. A whole different feeling.", 35, 158, 570, 28, 11, false).ForeColor = Glass.Muted;
+            AddLabel(root, "A little light. A whole different feeling.", 35, 158, 290, 28, 11, false).ForeColor = Glass.Muted;
             allRow.SetBounds(743, 125, 346, 48); allRow.Anchor = AnchorStyles.Top | AnchorStyles.Right; root.Controls.Add(allRow);
             var refresh = Button("Refresh", RefreshWithStatus); refresh.SetBounds(0, 0, 94, 42); allRow.Controls.Add(refresh);
             tips.SetToolTip(refresh, "Reload light states from the bridge (F5). HueReka also refreshes automatically.");
@@ -104,33 +106,34 @@ namespace HueReka
         void BuildControls()
         {
             controls.SetBounds(336, 209, 756, 530); controls.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right; root.Controls.Add(controls);
-            selected.SetBounds(31, 28, 458, 49); selected.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; controls.Controls.Add(selected);
-            lightDetail.SetBounds(34, 81, 500, 26); lightDetail.Anchor = selected.Anchor; controls.Controls.Add(lightDetail);
-            onButton = Button("On", () => Change(light => true, light => new { on = true })); onButton.SetBounds(559, 34, 78, 43); onButton.Anchor = AnchorStyles.Top | AnchorStyles.Right; controls.Controls.Add(onButton);
-            offButton = Button("Off", () => Change(light => true, light => new { on = false })); offButton.SetBounds(642, 34, 78, 43); offButton.Anchor = onButton.Anchor; controls.Controls.Add(offButton);
-            favorite = Button("☆", ToggleFavorite); favorite.Font = new Font("Segoe UI Symbol", 14); favorite.SetBounds(500, 34, 48, 43); favorite.Anchor = onButton.Anchor; controls.Controls.Add(favorite);
+            lightPage.SetBounds(0, 0, 756, 530); lightPage.Anchor = controls.Anchor; controls.Controls.Add(lightPage);
+            selected.SetBounds(31, 28, 458, 49); selected.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; lightPage.Controls.Add(selected);
+            lightDetail.SetBounds(34, 81, 500, 26); lightDetail.Anchor = selected.Anchor; lightPage.Controls.Add(lightDetail);
+            onButton = Button("On", () => Change(light => true, light => new { on = true })); onButton.SetBounds(559, 34, 78, 43); onButton.Anchor = AnchorStyles.Top | AnchorStyles.Right; lightPage.Controls.Add(onButton);
+            offButton = Button("Off", () => Change(light => true, light => new { on = false })); offButton.SetBounds(642, 34, 78, 43); offButton.Anchor = onButton.Anchor; lightPage.Controls.Add(offButton);
+            favorite = Button("☆", ToggleFavorite); favorite.Font = new Font("Segoe UI Symbol", 14); favorite.SetBounds(500, 34, 48, 43); favorite.Anchor = onButton.Anchor; lightPage.Controls.Add(favorite);
             tips.SetToolTip(favorite, "Make this light your favorite. HueReka selects it for you every time it opens.");
-            orb.SetBounds(43, 125, 267, 236); controls.Controls.Add(orb);
-            var orbCaption = AddLabel(controls, "A little atmosphere, on demand.", 29, 361, 300, 24, 9, false); orbCaption.TextAlign = ContentAlignment.MiddleCenter; orbCaption.ForeColor = Glass.Muted;
-            AddLabel(controls, "BRIGHTNESS", 365, 154, 170, 25, 9, true).ForeColor = Glass.Muted;
-            percentage.SetBounds(363, 188, 300, 49); controls.Controls.Add(percentage);
-            brightness.SetBounds(357, 246, 352, 42); brightness.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; controls.Controls.Add(brightness);
-            brightnessHint.SetBounds(365, 300, 340, 24); controls.Controls.Add(brightnessHint);
-            AddLabel(controls, "COLOR & WARMTH", 34, 405, 300, 22, 9, true).ForeColor = Glass.Muted;
-            colorHint.SetBounds(34, 486, 680, 27); colorHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; controls.Controls.Add(colorHint);
+            orb.SetBounds(43, 125, 267, 236); lightPage.Controls.Add(orb);
+            var orbCaption = AddLabel(lightPage, "A little atmosphere, on demand.", 29, 361, 300, 24, 9, false); orbCaption.TextAlign = ContentAlignment.MiddleCenter; orbCaption.ForeColor = Glass.Muted;
+            AddLabel(lightPage, "BRIGHTNESS", 365, 154, 170, 25, 9, true).ForeColor = Glass.Muted;
+            percentage.SetBounds(363, 188, 300, 49); lightPage.Controls.Add(percentage);
+            brightness.SetBounds(357, 246, 352, 42); brightness.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; lightPage.Controls.Add(brightness);
+            brightnessHint.SetBounds(365, 300, 340, 24); lightPage.Controls.Add(brightnessHint);
+            AddLabel(lightPage, "COLOR & WARMTH", 34, 405, 300, 22, 9, true).ForeColor = Glass.Muted;
+            colorHint.SetBounds(34, 486, 680, 27); colorHint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right; lightPage.Controls.Add(colorHint);
             Color[] colors = { Color.FromArgb(255, 179, 94), Color.FromArgb(246, 135, 170), Color.FromArgb(178, 145, 237), Color.FromArgb(122, 179, 238), Color.FromArgb(120, 207, 180) };
             string[] names = { "Amber", "Rose", "Lavender", "Sky", "Mint" };
             for (int i = 0; i < colors.Length; i++)
             {
                 Color tint = colors[i];
                 var swatch = Button(names[i], () => SetColor(tint)); swatch.Swatch = tint; swatch.AccessibleName = names[i];
-                swatch.SetBounds(31 + i * 46, 439, 39, 39); controls.Controls.Add(swatch); swatches.Add(swatch);
+                swatch.SetBounds(31 + i * 46, 439, 39, 39); lightPage.Controls.Add(swatch); swatches.Add(swatch);
                 tips.SetToolTip(swatch, names[i]);
             }
             color = Button("Custom color", PickColor);
-            color.SetBounds(274, 437, 138, 43); controls.Controls.Add(color);
-            warm = Button("Warm", () => Change(SupportsWhite, light => new { on = true, ct = light.MaxCt })); warm.SetBounds(434, 437, 111, 43); controls.Controls.Add(warm);
-            cool = Button("Cool", () => Change(SupportsWhite, light => new { on = true, ct = light.MinCt })); cool.SetBounds(551, 437, 111, 43); controls.Controls.Add(cool);
+            color.SetBounds(274, 437, 138, 43); lightPage.Controls.Add(color);
+            warm = Button("Warm", () => Change(SupportsWhite, light => new { on = true, ct = light.MaxCt })); warm.SetBounds(434, 437, 111, 43); lightPage.Controls.Add(warm);
+            cool = Button("Cool", () => Change(SupportsWhite, light => new { on = true, ct = light.MinCt })); cool.SetBounds(551, 437, 111, 43); lightPage.Controls.Add(cool);
         }
 
         void WireEvents()
@@ -151,6 +154,7 @@ namespace HueReka
             Shown += async (sender, args) => { if (!preview) { refreshTimer.Start(); await Run(StartUp); } };
             FormClosing += (sender, args) =>
             {
+                StopAmbience(null);
                 if (!busy) return;
                 args.Cancel = true; closeWhenIdle = true;
                 if (pairingOverlay.Visible) pairingOverlay.Dismiss(); else CancelPairing();

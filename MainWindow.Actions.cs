@@ -195,6 +195,7 @@ namespace HueReka
         {
             var candidate = CreateBridge(connection);
             var result = await candidate.Lights();
+            StopAmbience(null);
             bridge = candidate; saved = connection; lostContact = false;
             SetAddress(connection.Address);
             changeVersion++;
@@ -268,6 +269,7 @@ namespace HueReka
 
         async Task SwitchAll(bool on)
         {
+            StopAmbience(null);
             changeVersion++;
             await bridge.All(on); await RefreshLights();
             status.Text = on ? "All lights switched on." : "All lights switched off.";
@@ -304,6 +306,7 @@ namespace HueReka
             var chosen = Selection;
             var targets = chosen.Where(light => light.Reachable && supports(light)).ToList();
             if (targets.Count == 0) return;
+            ExcludeFromAmbience(targets);
             changeVersion++;
             Exception failure = null;
             foreach (var light in targets)
@@ -339,6 +342,7 @@ namespace HueReka
             connectionBadge.ForeColor = bridge == null ? Glass.Muted : Color.FromArgb(49, 123, 106);
             UpdateHeading(chosen);
             UpdateLook(chosen, usable);
+            UpdateAmbienceTargets();
         }
 
         void UpdateHeading(List<Light> chosen)
