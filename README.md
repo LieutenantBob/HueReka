@@ -30,7 +30,7 @@ Open the **Ambience** tab above the controls to let your lights drift slowly thr
 2. Pick a palette: **Sunset**, **Ocean**, **Forest**, **Candlelight**, **Aurora**, **Daylight**, or your own. **New palette...** lets you combine up to 12 colors and warm, neutral or cool whites.
 3. Choose **Drift** (each light wanders at its own pace) or **Together** (all lights change at once), set the speed (every 10 seconds up to every 10 minutes) and the brightness, then press **Start ambience**.
 
-The bridge fades each light smoothly over the whole step, so HueReka sends only one command per light per step. White-only bulbs show the closest white, and dimmable bulbs stay on at the chosen brightness. Changing a light yourself takes it out of the ambience, and **All lights off** stops it. The ambience runs while HueReka is open. If the bridge connection drops, it retries each light after about 5 seconds and carries on where it left off. Changing the mode, palette, speed or brightness, or editing its palette, while it runs restarts it with the new choice. From the command line, use `huereka ambience` (see `CLI-GUIDE.md`).
+The bridge fades each light smoothly over the whole step, so HueReka sends only one command per light per step. White-only bulbs show the closest white, and dimmable bulbs stay on at the chosen brightness. Changing a light yourself takes it out of the ambience, and **All lights off** stops it. The ambience runs while HueReka is open. If the bridge connection drops, it retries each light after about 5 seconds and carries on where it left off; in **Together** mode a light that missed a change rejoins the others on the current one. When the ambience stops, each light finishes its current fade, then stays as it is. Changing the mode, palette, speed or brightness, or editing its palette, while it runs restarts it with the new choice. From the command line, use `huereka ambience` (see `CLI-GUIDE.md`).
 
 ## Command Prompt
 
@@ -55,7 +55,7 @@ If you have not paired yet, run `huereka pair 192.168.1.20` using your bridge's 
 
 From any directory, use the full quoted path, for example `"C:\Repos\HueReka!\dist\huereka.exe" off 1`. In batch files that enable delayed expansion, run `setlocal DisableDelayedExpansion` before using the path containing `!`.
 
-Exit codes (`echo %ERRORLEVEL%`): 0 means success, 1 means a connection/bridge/credential error, and 2 means invalid arguments, unknown light ID, or unsupported capability. Errors go to stderr. Run `huereka --self-test` for CLI tests with a simulated bridge; it does not contact real lights or change saved credentials.
+Exit codes (`echo %ERRORLEVEL%`): 0 means success, 1 means a connection/bridge/credential error, and 2 means invalid arguments, an unknown palette, an invalid option, an unknown light ID, or an unsupported capability. Errors go to stderr. Run `huereka --self-test` for CLI tests with a simulated bridge; it does not contact real lights or change saved credentials.
 
 ## Build and verify
 

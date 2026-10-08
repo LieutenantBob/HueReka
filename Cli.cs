@@ -30,7 +30,7 @@ namespace HueReka
   huereka help
 
 Uses the same saved pairing as the desktop app, for this Windows user.
-Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
+Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command, unknown palette or invalid option.
 ";
 
         static volatile bool ambienceRunning;
@@ -45,10 +45,17 @@ Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
             }
             using (var stop = new CancellationTokenSource())
             {
-                // Ctrl+C ends an ambience gracefully; for every other command it keeps its normal meaning.
-                Console.CancelKeyPress += (sender, e) => { if (!ambienceRunning) return; e.Cancel = true; stop.Cancel(); };
+                // The first Ctrl+C ends an ambience gracefully; a second one, or Ctrl+C during any other command, ends the program at once.
+                Console.CancelKeyPress += (sender, e) => { e.Cancel = CatchCancel(ambienceRunning, stop); };
                 return Execute(args, Settings.Load, settings => new Bridge(settings), settings => settings.Save(), Console.Out, Console.Error, stop.Token).GetAwaiter().GetResult();
             }
+        }
+
+        // Cancels a running ambience and returns true when this Ctrl+C should not end the program.
+        static bool CatchCancel(bool running, CancellationTokenSource stop)
+        {
+            if (!running || stop.IsCancellationRequested) return false;
+            stop.Cancel(); return true;
         }
 
         static void Validate(string[] args)
@@ -290,6 +297,12 @@ Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
                     Check(output.ToString().Contains("Ambience Sunset on 1 light (together), every 30 s. Press Ctrl+C to stop.") && output.ToString().Contains("Ambience stopped."), "Ambience start and stop messages");
                 }
                 finally { AmbienceRunner.Delay = oldDelay; AmbienceRunner.Clock = oldClock; }
+            }
+            using (var stop = new CancellationTokenSource())
+            {
+                Check(!CatchCancel(false, stop) && !stop.IsCancellationRequested, "Ctrl+C outside an ambience ends the program");
+                Check(CatchCancel(true, stop) && stop.IsCancellationRequested, "The first Ctrl+C stops the ambience gracefully");
+                Check(!CatchCancel(true, stop), "A second Ctrl+C ends the program at once");
             }
             rejectWrite = true;
             Check(await run(new[] { "on", "1" }) == 1, "Bridge errors return nonzero");

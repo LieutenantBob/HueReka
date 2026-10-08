@@ -74,7 +74,7 @@ huereka ambience Ocean 1 3 --together --speed 300 --brightness 40
 | `--speed <10-600>` | Seconds per change (default 120). The bridge fades smoothly over that whole time. |
 | `--brightness <1-100>` | Brightness in percent while the ambience runs (default 70). |
 
-White-only bulbs show the closest white, and dimmable bulbs just stay on at the chosen brightness. Lights keep their last color when the ambience stops.
+White-only bulbs show the closest white, and dimmable bulbs just stay on at the chosen brightness. When the ambience stops, each light finishes its current fade, then stays as it is.
 
 ## Help and troubleshooting
 
@@ -82,4 +82,4 @@ White-only bulbs show the closest white, and dimmable bulbs just stay on at the 
 - **Unreachable light:** Check its physical power switch and connection to the bridge.
 - **Cannot connect:** Check the network and bridge IP. If the address changed, pair again using the new address.
 - **Command not recognized:** Change to the installation folder or add it to your user Path as described above.
-- **Batch scripts:** Run `echo %ERRORLEVEL%` immediately after a command: **0** = success, **1** = connection/bridge/credential error, **2** = invalid command, light ID, or unsupported capability.
+- **Batch scripts:** Run `echo %ERRORLEVEL%` immediately after a command: **0** = success, **1** = connection/bridge/credential error, **2** = invalid command, unknown palette, invalid option, light ID, or unsupported capability.
