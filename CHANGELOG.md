@@ -2,7 +2,7 @@
 
 All notable changes to HueReka! are listed here.
 
-## [Unreleased]
+## [1.2.0] - 2026-10-08
 
 ### Added
 - **Ambience:** a new **Ambience** tab slowly fades all or selected lights through a palette of colors and whites. Choose **Drift**, where each light wanders at its own pace, or **Together**, set the speed from every 10 seconds to every 10 minutes, and pick a brightness. The bridge does the fading, so the effect is smooth and light on your network.
