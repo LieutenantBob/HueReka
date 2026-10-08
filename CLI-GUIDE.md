@@ -56,6 +56,26 @@ Brightness accepts whole numbers from **1 to 100**. Use `off` to switch off. War
 
 **HTML colors:** `huereka color 1 RRGGBB` accepts exactly six uppercase hexadecimal digits, without `#`. Examples: `FF0000` (red), `00FF00` (green), `0000FF` (blue), `FFFFFF` (white). The command sets both color and brightness from the RGB value; `000000` turns the light off. A color-capable bulb is required. Actual colors depend on the bulb and may differ from a screen.
 
+## 4. Ambience: slowly changing colors
+
+Fade lights through a palette of colors and whites until you press **Ctrl+C**:
+
+```bat
+huereka palettes
+huereka ambience Sunset
+huereka ambience Ocean 1 3 --together --speed 300 --brightness 40
+```
+
+| Option | Meaning |
+| --- | --- |
+| `<palette>` | A name from `huereka palettes`: built-in (Sunset, Ocean, Forest, Candlelight, Aurora, Daylight) or one you made in the desktop app. Quote names with spaces. |
+| `id ...` | Light IDs to use. Leave them out to use every light that can dim or change color. |
+| `--together` | All lights change at the same time. Without it, each light drifts at its own pace. |
+| `--speed <10-600>` | Seconds per change (default 120). The bridge fades smoothly over that whole time. |
+| `--brightness <1-100>` | Brightness in percent while the ambience runs (default 70). |
+
+White-only bulbs show the closest white, and dimmable bulbs just stay on at the chosen brightness. Lights keep their last color when the ambience stops.
+
 ## Help and troubleshooting
 
 - **All commands:** Run `huereka help`.
