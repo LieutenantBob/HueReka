@@ -21,6 +21,56 @@ namespace HueReka
         public static void Run()
         {
             PaletteTests();
+            PlannerTests();
+        }
+
+        static void PlannerTests()
+        {
+            Assert(AmbienceSpeed.FromSlider(1) == 10 && AmbienceSpeed.FromSlider(100) == 600 && AmbienceSpeed.FromSlider(-5) == 10 && AmbienceSpeed.FromSlider(500) == 600, "Speed slider spans 10 s to 10 min");
+            Assert(AmbienceSpeed.ToSlider(10) == 1 && AmbienceSpeed.ToSlider(600) == 100 && AmbienceSpeed.ToSlider(5) == 1 && AmbienceSpeed.ToSlider(9999) == 100, "Speed to slider clamps");
+            for (int v = 2; v <= 100; v++) Assert(AmbienceSpeed.FromSlider(v) >= AmbienceSpeed.FromSlider(v - 1), "Speed slider never goes backwards");
+            Assert(AmbienceSpeed.FromSlider(AmbienceSpeed.ToSlider(120)) == 120, "Default speed survives the slider");
+            Assert(AmbienceSpeed.Describe(45) == "every 45 s" && AmbienceSpeed.Describe(120) == "every 2 min" && AmbienceSpeed.Describe(90) == "every 1 min 30 s", "Speed descriptions");
+
+            for (int count = 2; count <= 5; count++)
+                for (int lights = 1; lights <= 8; lights++)
+                    for (int step = 0; step < 6; step++)
+                    {
+                        var drift = Enumerable.Range(0, lights).Select(i => AmbiencePlanner.EntryIndex(AmbienceMode.Drift, step, i, lights, count)).ToList();
+                        Assert(drift.All(index => index >= 0 && index < count), "Drift index stays in the palette");
+                        for (int i = 1; i < lights; i++) Assert(drift[i] != drift[i - 1], "Neighbouring lights show different entries in Drift");
+                        if (lights <= count) Assert(drift.Distinct().Count() == lights, "Lights spread over the palette when there is room");
+                        Assert(Enumerable.Range(0, lights).All(i => AmbiencePlanner.EntryIndex(AmbienceMode.Together, step, i, lights, count) == step % count), "Together moves every light to the same entry");
+                    }
+
+            var ids = Enumerable.Range(1, 50).Select(i => i.ToString()).ToList();
+            var factors = ids.Select(id => AmbiencePlanner.PaceFactor(7, id)).ToList();
+            Assert(factors.All(f => f >= 0.75 && f < 1.25) && factors.Distinct().Count() > 10, "Each light gets its own pace in 0.75-1.25");
+            Assert(ids.All(id => AmbiencePlanner.PaceFactor(7, id) == AmbiencePlanner.PaceFactor(7, id)), "The same seed gives the same pace");
+            Assert(ids.Any(id => AmbiencePlanner.PaceFactor(7, id) != AmbiencePlanner.PaceFactor(8, id)), "Another seed gives other paces");
+            var drifting = new AmbienceOptions { Palette = Palettes.Presets[0], Mode = AmbienceMode.Drift, SpeedSeconds = 100, Seed = 7 };
+            Assert(ids.All(id => AmbiencePlanner.StepSeconds(drifting, id) >= 75 && AmbiencePlanner.StepSeconds(drifting, id) <= 125), "Drift steps stay within a quarter of the speed");
+            drifting.Mode = AmbienceMode.Together;
+            Assert(ids.All(id => AmbiencePlanner.StepSeconds(drifting, id) == 100), "Together steps use the exact speed");
+
+            var color = MakeLight("1", ColorBulb); var colorOnly = MakeLight("2", ColorOnly); var white = MakeLight("3", WhiteBulb);
+            var dimmable = MakeLight("4", Dimmable); var plug = MakeLight("5", Plug);
+            var narrow = new Light("6", Json.Map(Json.Parse("{\"name\":\"Narrow\",\"state\":" + WhiteBulb + ",\"capabilities\":{\"control\":{\"ct\":{\"min\":200,\"max\":454}}}}")));
+            Assert(new[] { color, colorOnly, white, dimmable }.All(AmbiencePlanner.CanJoin) && !AmbiencePlanner.CanJoin(plug), "Plugs can't join, every dimmable or colored bulb can");
+
+            var red = AmbiencePlanner.State(PaletteEntry.Rgb(255, 0, 0), color, 70, 1200);
+            Assert(Equals(red["on"], true) && (int)red["hue"] == 0 && (int)red["sat"] == 254 && (int)red["bri"] == 178 && (int)red["transitiontime"] == 1200 && !red.ContainsKey("ct"), "Color entry on a color bulb");
+            var candle = AmbiencePlanner.State(PaletteEntry.White(2000), white, 70, 50);
+            Assert((int)candle["ct"] == 500 && !candle.ContainsKey("hue"), "White entry on a white bulb");
+            Assert((int)AmbiencePlanner.State(PaletteEntry.White(6500), narrow, 70, 50)["ct"] == 200, "White clamps to the bulb's coolest white");
+            var approximated = AmbiencePlanner.State(PaletteEntry.White(2700), colorOnly, 70, 50);
+            Assert(approximated.ContainsKey("hue") && (int)approximated["sat"] > 0 && !approximated.ContainsKey("ct"), "White on a color-only bulb becomes a warm color");
+            Assert((int)AmbiencePlanner.State(PaletteEntry.Rgb(255, 120, 0), white, 70, 50)["ct"] == 500, "Warm colors become the warmest white on white bulbs");
+            Assert((int)AmbiencePlanner.State(PaletteEntry.Rgb(0, 80, 255), white, 70, 50)["ct"] == 153, "Blues become the coolest white on white bulbs");
+            Assert((int)AmbiencePlanner.State(PaletteEntry.Rgb(40, 220, 120), white, 70, 50)["ct"] == 326, "Other colors become a neutral white");
+            var dim = AmbiencePlanner.State(PaletteEntry.Rgb(255, 0, 0), dimmable, 70, 50);
+            Assert(dim.Keys.OrderBy(k => k).SequenceEqual(new[] { "bri", "on", "transitiontime" }), "Dimmable bulbs only fade brightness");
+            Assert((int)AmbiencePlanner.State(PaletteEntry.White(3000), white, 70, 70000)["transitiontime"] == 65535 && (int)AmbiencePlanner.State(PaletteEntry.White(3000), white, 70, -1)["transitiontime"] == 0, "Transition time stays within the bridge's limits");
         }
 
         static void PaletteTests()
