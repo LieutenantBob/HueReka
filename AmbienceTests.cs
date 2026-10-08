@@ -22,6 +22,7 @@ namespace HueReka
         {
             PaletteTests();
             PlannerTests();
+            RunnerTests();
         }
 
         static void PlannerTests()
@@ -113,6 +114,69 @@ namespace HueReka
             Assert(Palettes.All(settings).Count == 7 && Palettes.Find(settings, " cozy ").Name == "Cozy" && Palettes.Find(settings, "Nope") == null && Palettes.Find(settings, null) == null, "Find palettes by name");
             Assert(Palettes.IsPreset("aurora") && !Palettes.IsPreset("Cozy"), "Preset detection ignores case");
             Assert(Palettes.Custom(new Settings { CustomPalettes = null }).Count == 0, "A missing palette list loads as empty");
+        }
+
+        static void RunnerTests()
+        {
+            var oldDelay = AmbienceRunner.Delay; var oldClock = AmbienceRunner.Clock;
+            var start = new DateTime(2026, 1, 1); var now = start;
+            AmbienceRunner.Clock = () => now;
+            try
+            {
+                var calls = new List<string>(); var times = new List<DateTime>(); bool down = false;
+                var bridge = new Bridge(new Settings { Address = "192.168.1.2", Key = "k" }, (method, path, body) => {
+                    if (down) throw new WebException("Bridge unplugged");
+                    calls.Add(path + " " + body); times.Add(now);
+                    return path.Contains("/lights/3/") ? "[{\"error\":{\"type\":201,\"description\":\"device is not reachable\"}}]" : "[{\"success\":{}}]";
+                });
+                var lights = new List<Light> { MakeLight("1", ColorBulb), MakeLight("2", WhiteBulb), MakeLight("3", ColorBulb), MakeLight("4", Plug) };
+                var sunset = Palettes.Presets[0];
+                Action<AmbienceOptions, IEnumerable<Light>, string> rejects = (bad, chosen, message) => {
+                    try { new AmbienceRunner(bridge, bad, chosen); throw new Exception(message); } catch (ArgumentException) { } };
+                rejects(new AmbienceOptions { Palette = new Palette("Bad", PaletteEntry.White(3000)) }, lights, "Invalid palette rejected");
+                rejects(new AmbienceOptions { Palette = sunset, SpeedSeconds = 9 }, lights, "Speed below 10 s rejected");
+                rejects(new AmbienceOptions { Palette = sunset, BrightnessPercent = 0 }, lights, "Brightness 0 rejected");
+                rejects(new AmbienceOptions { Palette = sunset }, lights.Skip(3), "Plugs alone can't run an ambience");
+
+                // Together: three rounds over lights 1-3, then cancel.
+                var messages = new List<string>(); var waits = new List<TimeSpan>();
+                using (var stop = new CancellationTokenSource())
+                {
+                    AmbienceRunner.Delay = (span, cancel) => { waits.Add(span); now += span; if (calls.Count >= 9) stop.Cancel(); cancel.ThrowIfCancellationRequested(); return Task.FromResult(0); };
+                    var together = new AmbienceRunner(bridge, new AmbienceOptions { Palette = sunset, Mode = AmbienceMode.Together, SpeedSeconds = 60, BrightnessPercent = 50, Seed = 1 }, lights);
+                    Assert(together.LightCount == 3 && together.LightIds.SequenceEqual(new[] { "1", "2", "3" }), "Plugs are left out of the ambience");
+                    together.Run(new Reporter(messages.Add), stop.Token).GetAwaiter().GetResult();
+                }
+                Assert(calls.Count == 9, "Cancelling stops the ambience cleanly");
+                Assert(calls.Take(3).All(call => call.Contains("\"transitiontime\":20")) && calls.Skip(3).All(call => call.Contains("\"transitiontime\":600")), "First fade is quick, later fades last the whole step");
+                Assert(calls[0].StartsWith("/api/k/lights/1/state") && calls[1].StartsWith("/api/k/lights/2/state") && calls[2].StartsWith("/api/k/lights/3/state"), "Each light gets one command per step");
+                Assert(calls[0].Substring(calls[0].IndexOf(' ')) == calls[2].Substring(calls[2].IndexOf(' ')) && calls[3].Substring(calls[3].IndexOf(' ')) != calls[0].Substring(calls[0].IndexOf(' ')), "Together lights match each step and move on the next");
+                Assert(calls[1].Contains("\"ct\":500") && calls.All(call => call.Contains("\"bri\":127")), "White bulbs follow with whites, at the chosen brightness");
+                Assert(times[3] - times[0] == TimeSpan.FromSeconds(2) && times[6] - times[3] == TimeSpan.FromSeconds(60), "Steps wait for the fade to finish");
+                Assert(waits.Count(w => w == AmbienceRunner.CommandSpacing) >= 8, "Commands are spaced to respect the bridge's rate limit");
+                Assert(messages.Count == 3 && messages.All(m => m.StartsWith("Light 3:") && m.Contains("not reachable")), "An unreachable bulb is reported once per step and the others continue");
+
+                // Drift: the bridge drops and returns, then lights are excluded until none are left.
+                calls.Clear(); messages.Clear(); now = start;
+                int delays = 0, downDelays = 0;
+                var options = new AmbienceOptions { Palette = sunset, Mode = AmbienceMode.Drift, SpeedSeconds = 100, BrightnessPercent = 50, Seed = 7 };
+                var drift = new AmbienceRunner(bridge, options, lights.Take(2));
+                AmbienceRunner.Delay = (span, cancel) => {
+                    if (++delays > 1000) throw new Exception("Runner never stopped");
+                    now += span;
+                    if (calls.Count == 2 && downDelays == 0) down = true;
+                    if (down && ++downDelays > 4) down = false;
+                    if (calls.Count == 4) drift.Exclude(new[] { "1" });
+                    if (calls.Count == 6) drift.Exclude(new[] { "2", "2" });
+                    return Task.FromResult(0);
+                };
+                drift.Run(new Reporter(messages.Add), CancellationToken.None).GetAwaiter().GetResult();
+                Assert(messages.Count(m => m.StartsWith("Lost contact")) == 1 && messages.Count(m => m.StartsWith("Back in touch")) == 1, "A dropped bridge is reported once, and its return once");
+                Assert(messages.Last().StartsWith("Ambience stopped") && drift.LightCount == 0, "The ambience stops when every light was taken out");
+                Assert(calls.Skip(4).All(call => call.StartsWith("/api/k/lights/2/state")), "An excluded light gets no more commands");
+                Assert(calls.Any(call => call.StartsWith("/api/k/lights/1/state") && call.Contains("\"transitiontime\":" + AmbiencePlanner.StepSeconds(options, "1") * 10)), "Drift fades each light at its own pace");
+            }
+            finally { AmbienceRunner.Delay = oldDelay; AmbienceRunner.Clock = oldClock; }
         }
     }
 }

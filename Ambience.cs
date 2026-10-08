@@ -103,4 +103,82 @@ namespace HueReka
         public Reporter(Action<string> write) { this.write = write; }
         public void Report(string value) { write(value); }
     }
+
+    // Runs an ambience until cancelled. Each command asks the bridge to fade over the whole step
+    // (transitiontime), so HueReka sends one command per light per step and the bridge does the rest.
+    sealed class AmbienceRunner
+    {
+        // Replaceable so tests can run hours of ambience instantly.
+        internal static Func<TimeSpan, CancellationToken, Task> Delay = (span, cancel) => Task.Delay(span, cancel);
+        internal static Func<DateTime> Clock = () => DateTime.UtcNow;
+        // The bridge accepts about 10 light commands per second.
+        public static readonly TimeSpan CommandSpacing = TimeSpan.FromMilliseconds(100);
+        // The first fade is short so starting an ambience is visible right away.
+        public static readonly TimeSpan FirstFade = TimeSpan.FromSeconds(2);
+
+        readonly Bridge bridge;
+        readonly AmbienceOptions options;
+        readonly List<Light> lights;
+        readonly HashSet<string> excluded = new HashSet<string>();
+        readonly object gate = new object();
+
+        public AmbienceRunner(Bridge bridge, AmbienceOptions options, IEnumerable<Light> lights)
+        {
+            if (bridge == null) throw new ArgumentNullException("bridge");
+            if (options == null || options.Palette == null || options.Palette.Problem(new string[0]) != null) throw new ArgumentException("Choose a valid palette.");
+            if (options.SpeedSeconds < AmbienceSpeed.MinSeconds || options.SpeedSeconds > AmbienceSpeed.MaxSeconds) throw new ArgumentException("Speed must be from 10 to 600 seconds.");
+            if (options.BrightnessPercent < 1 || options.BrightnessPercent > 100) throw new ArgumentException("Brightness must be from 1 to 100.");
+            this.lights = (lights ?? Enumerable.Empty<Light>()).Where(AmbiencePlanner.CanJoin).GroupBy(light => light.Id).Select(group => group.First()).ToList();
+            if (this.lights.Count == 0) throw new ArgumentException("None of these lights can change color or brightness.");
+            this.bridge = bridge; this.options = options;
+        }
+
+        public AmbienceOptions Options { get { return options; } }
+        public List<string> LightIds { get { lock (gate) return lights.Where(light => !excluded.Contains(light.Id)).Select(light => light.Id).ToList(); } }
+        public int LightCount { get { return LightIds.Count; } }
+        // Takes lights out, for example when the user changes them by hand.
+        public void Exclude(IEnumerable<string> ids) { lock (gate) foreach (string id in ids) excluded.Add(id); }
+        bool Active(Light light) { lock (gate) return !excluded.Contains(light.Id); }
+
+        public async Task Run(IProgress<string> report, CancellationToken cancel)
+        {
+            var steps = lights.ToDictionary(light => light.Id, light => 0);
+            var due = lights.ToDictionary(light => light.Id, light => Clock());
+            bool lost = false;
+            try
+            {
+                while (true)
+                {
+                    cancel.ThrowIfCancellationRequested();
+                    if (LightCount == 0) { Say(report, "Ambience stopped: every light was changed by hand."); return; }
+                    for (int i = 0; i < lights.Count; i++)
+                    {
+                        var light = lights[i];
+                        if (!Active(light) || due[light.Id] > Clock()) continue;
+                        int step = steps[light.Id];
+                        TimeSpan fade = step == 0 ? FirstFade : TimeSpan.FromSeconds(AmbiencePlanner.StepSeconds(options, light.Id));
+                        var entries = options.Palette.Entries;
+                        var entry = entries[AmbiencePlanner.EntryIndex(options.Mode, step, i, lights.Count, entries.Count)];
+                        try
+                        {
+                            await bridge.Set(light.Id, AmbiencePlanner.State(entry, light, options.BrightnessPercent, (int)(fade.TotalMilliseconds / 100)));
+                            if (lost) { lost = false; Say(report, "Back in touch with the bridge. The ambience continues."); }
+                        }
+                        catch (WebException) { if (!lost) { lost = true; Say(report, "Lost contact with the bridge. The ambience will keep trying."); } }
+                        catch (Exception error) { Say(report, light.Name + ": " + error.Message.Replace("Hue Bridge: ", "")); }
+                        steps[light.Id] = step + 1;
+                        due[light.Id] = Clock() + fade;
+                        await Delay(CommandSpacing, cancel);
+                    }
+                    var active = lights.Where(Active).ToList();
+                    if (active.Count == 0) continue;
+                    TimeSpan wait = active.Min(light => due[light.Id]) - Clock();
+                    if (wait > TimeSpan.Zero) await Delay(wait, cancel);
+                }
+            }
+            catch (OperationCanceledException) { }
+        }
+
+        static void Say(IProgress<string> report, string message) { if (report != null) report.Report(message); }
+    }
 }
