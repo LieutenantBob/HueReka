@@ -175,6 +175,25 @@ namespace HueReka
                 Assert(messages.Last().StartsWith("Ambience stopped") && drift.LightCount == 0, "The ambience stops when every light was taken out");
                 Assert(calls.Skip(4).All(call => call.StartsWith("/api/k/lights/2/state")), "An excluded light gets no more commands");
                 Assert(calls.Any(call => call.StartsWith("/api/k/lights/1/state") && call.Contains("\"transitiontime\":" + AmbiencePlanner.StepSeconds(options, "1") * 10)), "Drift fades each light at its own pace");
+                // A light that lost the bridge retries the same step soon, instead of skipping ahead.
+                var attempts = new List<string>(); var attemptTimes = new List<DateTime>(); now = start;
+                var flaky = new Bridge(new Settings { Address = "192.168.1.2", Key = "k" }, (method, path, body) => {
+                    attempts.Add(body); attemptTimes.Add(now);
+                    if (attempts.Count == 2) throw new WebException("Bridge unplugged");
+                    return "[{\"success\":{}}]"; });
+                using (var stop = new CancellationTokenSource())
+                {
+                    AmbienceRunner.Delay = (span, cancel) => { now += span; if (attempts.Count >= 4) stop.Cancel(); cancel.ThrowIfCancellationRequested(); return Task.FromResult(0); };
+                    new AmbienceRunner(flaky, new AmbienceOptions { Palette = sunset, Mode = AmbienceMode.Together, SpeedSeconds = 60, BrightnessPercent = 50, Seed = 1 }, new[] { lights[0] }).Run(null, stop.Token).GetAwaiter().GetResult();
+                }
+                Assert(attempts.Count == 4 && attempts[2] == attempts[1] && attempts[1] != attempts[0] && attempts[3] != attempts[2], "A dropped bridge makes the light retry the same step, not skip it");
+                Assert(attemptTimes[2] - attemptTimes[1] == AmbienceRunner.RetryDelay, "The retry comes after the short retry delay, not the whole fade");
+
+                // The runner keeps its own copy of the options.
+                var mine = new AmbienceOptions { Palette = sunset, SpeedSeconds = 60 };
+                var copied = new AmbienceRunner(bridge, mine, lights);
+                mine.Palette = null; mine.SpeedSeconds = 5;
+                Assert(copied.Options.Palette != null && copied.Options.Palette.Name == "Sunset" && copied.Options.SpeedSeconds == 60, "Changing the caller's options later doesn't affect a runner");
             }
             finally { AmbienceRunner.Delay = oldDelay; AmbienceRunner.Clock = oldClock; }
         }

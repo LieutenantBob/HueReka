@@ -116,6 +116,9 @@ namespace HueReka
         // The first fade is short so starting an ambience is visible right away.
         public static readonly TimeSpan FirstFade = TimeSpan.FromSeconds(2);
 
+        // After a dropped connection a light tries the same step again soon, rather than waiting out its fade.
+        public static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(5);
+
         readonly Bridge bridge;
         readonly AmbienceOptions options;
         readonly List<Light> lights;
@@ -130,7 +133,8 @@ namespace HueReka
             if (options.BrightnessPercent < 1 || options.BrightnessPercent > 100) throw new ArgumentException("Brightness must be from 1 to 100.");
             this.lights = (lights ?? Enumerable.Empty<Light>()).Where(AmbiencePlanner.CanJoin).GroupBy(light => light.Id).Select(group => group.First()).ToList();
             if (this.lights.Count == 0) throw new ArgumentException("None of these lights can change color or brightness.");
-            this.bridge = bridge; this.options = options;
+            this.bridge = bridge;
+            this.options = new AmbienceOptions { Palette = options.Palette.Copy(), Mode = options.Mode, SpeedSeconds = options.SpeedSeconds, BrightnessPercent = options.BrightnessPercent, Seed = options.Seed };
         }
 
         public AmbienceOptions Options { get { return options; } }
@@ -159,15 +163,16 @@ namespace HueReka
                         TimeSpan fade = step == 0 ? FirstFade : TimeSpan.FromSeconds(AmbiencePlanner.StepSeconds(options, light.Id));
                         var entries = options.Palette.Entries;
                         var entry = entries[AmbiencePlanner.EntryIndex(options.Mode, step, i, lights.Count, entries.Count)];
+                        bool retry = false;
                         try
                         {
                             await bridge.Set(light.Id, AmbiencePlanner.State(entry, light, options.BrightnessPercent, (int)(fade.TotalMilliseconds / 100)));
                             if (lost) { lost = false; Say(report, "Back in touch with the bridge. The ambience continues."); }
                         }
-                        catch (WebException) { if (!lost) { lost = true; Say(report, "Lost contact with the bridge. The ambience will keep trying."); } }
+                        catch (WebException) { retry = true; if (!lost) { lost = true; Say(report, "Lost contact with the bridge. The ambience will keep trying."); } }
                         catch (Exception error) { Say(report, light.Name + ": " + error.Message.Replace("Hue Bridge: ", "")); }
-                        steps[light.Id] = step + 1;
-                        due[light.Id] = Clock() + fade;
+                        if (!retry) steps[light.Id] = step + 1;
+                        due[light.Id] = Clock() + (retry && RetryDelay < fade ? RetryDelay : fade);
                         await Delay(CommandSpacing, cancel);
                     }
                     var active = lights.Where(Active).ToList();
