@@ -56,6 +56,8 @@ namespace HueReka
         public string Fingerprint = "";
         // Id of the light pre-selected at launch. Light ids belong to one bridge, so it is kept only for that bridge.
         public string FavoriteLight = "";
+        // Palettes belong to the user, not the bridge, so they are kept when pairing again.
+        public List<Palette> CustomPalettes = new List<Palette>();
         static string FileName { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HueReka!", "connection.dat"); } }
         public void Save()
         {

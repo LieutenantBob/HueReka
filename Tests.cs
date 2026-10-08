@@ -21,6 +21,7 @@ namespace HueReka
 
         public static void Run()
         {
+            AmbienceTests.Run();
             Assert(MainWindow.Brightness(1) == 3 && MainWindow.Brightness(100) == 254, "Brightness mapping");
             try { Bridge.ValidateAddress("192.168.1.2/api/other"); throw new Exception("Address accepted path"); } catch (InvalidOperationException) { }
             try { Json.Parse(NotPressed); throw new Exception("Pairing error ignored"); }

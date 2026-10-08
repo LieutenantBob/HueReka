@@ -73,25 +73,10 @@ Exit codes: 0 = success, 1 = connection/bridge error, 2 = invalid command.
 
         static Dictionary<string, object> ColorState(string hex)
         {
-            // Convert RGB to HSV. Hue uses 0-65535; saturation and brightness use 0-254.
-            // HSV saturation is needed here; System.Drawing.Color.GetSaturation returns HSL.
             int rgb = Convert.ToInt32(hex, 16);
-            double r = ((rgb >> 16) & 255) / 255.0, g = ((rgb >> 8) & 255) / 255.0, b = (rgb & 255) / 255.0;
-            double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
-            if (max == 0) return new Dictionary<string, object> { { "on", false } };
-            double delta = max - min, hue = 0;
-            if (delta > 0)
-            {
-                if (max == r) hue = 60 * ((g - b) / delta);
-                else if (max == g) hue = 60 * ((b - r) / delta + 2);
-                else hue = 60 * ((r - g) / delta + 4);
-                if (hue < 0) hue += 360;
-            }
-            return new Dictionary<string, object> {
-                { "on", true }, { "hue", (int)Math.Round(hue / 360 * 65535) },
-                { "sat", (int)Math.Round(delta / max * 254) },
-                { "bri", Math.Max(1, (int)Math.Round(max * 254)) }
-            };
+            if (rgb == 0) return new Dictionary<string, object> { { "on", false } };
+            var hsv = HueColor.FromRgb((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255);
+            return new Dictionary<string, object> { { "on", true }, { "hue", hsv.Hue }, { "sat", hsv.Sat }, { "bri", Math.Max(1, hsv.Bri) } };
         }
 
         static async Task<int> Execute(string[] args, Func<Settings> load, Func<Settings, Bridge> create, Action<Settings> save, TextWriter output, TextWriter errorOutput)

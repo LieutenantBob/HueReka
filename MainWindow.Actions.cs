@@ -278,10 +278,8 @@ namespace HueReka
 
         Task SetColor(Color tint)
         {
-            double max = Math.Max(tint.R, Math.Max(tint.G, tint.B));
-            double min = Math.Min(tint.R, Math.Min(tint.G, tint.B));
-            int hue = (int)Math.Round(tint.GetHue() / 360.0 * 65535), sat = max == 0 ? 0 : (int)Math.Round((max - min) / max * 254);
-            return Change(SupportsColor, light => new { on = true, hue = hue, sat = sat });
+            var hsv = HueColor.FromRgb(tint.R, tint.G, tint.B);
+            return Change(SupportsColor, light => new { on = true, hue = hsv.Hue, sat = hsv.Sat });
         }
 
         async Task PickColor()
