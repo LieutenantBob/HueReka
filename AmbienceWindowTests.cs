@@ -27,6 +27,8 @@ namespace HueReka
             try
             {
                 LayoutAndChoices(window);
+                EditorTests();
+                PaletteManagement(window);
                 RunAndStop(window, calls);
                 ClosingStops(calls);
             }
@@ -55,6 +57,81 @@ namespace HueReka
             typeof(MainWindow).GetMethod("ShowAmbienceChoices", Tests.Private).Invoke(window, null);
             Assert(panel.SpeedSeconds == 120 && panel.BrightnessPercent == 70 && panel.Mode == AmbienceMode.Drift, "Default choices");
             Assert(!Get<GlassButton>(panel, "editPalette").Enabled && !Get<GlassButton>(panel, "deletePalette").Enabled, "Built-in palettes can't be edited or deleted");
+        }
+
+        static void EditorTests()
+        {
+            using (var editor = new PaletteEditor(null, new[] { "Sunset", "Cozy" }))
+            {
+                var save = Get<GlassButton>(editor, "save"); var name = Get<TextBox>(editor, "name"); var problem = Get<Label>(editor, "problem");
+                Assert(!save.Enabled && problem.Text.Length > 0, "An empty palette can't be saved and says why");
+                name.Text = "Calm";
+                editor.AddEntry(PaletteEntry.Rgb(10, 20, 30));
+                Assert(!save.Enabled && problem.Text.Contains("at least 2"), "One entry is not enough");
+                editor.AddEntry(PaletteEntry.White(2200));
+                Assert(save.Enabled && problem.Text == "", "A named palette with two entries can be saved");
+                name.Text = " cozy ";
+                Assert(!save.Enabled && problem.Text.Contains("already exists"), "A taken name can't be saved");
+                name.Text = "Calm";
+                Get<ListBox>(editor, "entries").SelectedIndex = 1;
+                typeof(PaletteEditor).GetMethod("Move", Tests.Private).Invoke(editor, new object[] { -1 });
+                Assert(Get<ListBox>(editor, "entries").SelectedIndex == 0, "Move up keeps the moved entry selected");
+                for (int i = 0; i < 20; i++) editor.AddEntry(PaletteEntry.White(4000));
+                Assert(Get<ListBox>(editor, "entries").Items.Count == 12 && !Get<GlassButton>(editor, "addWarm").Enabled && !Get<GlassButton>(editor, "addColor").Enabled, "Adding stops at twelve entries");
+                Get<ListBox>(editor, "entries").SelectedIndex = 11;
+                typeof(PaletteEditor).GetMethod("Remove", Tests.Private).Invoke(editor, null);
+                Assert(Get<ListBox>(editor, "entries").Items.Count == 11 && Get<GlassButton>(editor, "addWarm").Enabled, "Remove frees a place");
+                editor.Save();
+                Assert(editor.DialogResult == DialogResult.OK && editor.Result.Name == "Calm" && editor.Result.Entries.Count == 11 && editor.Result.Entries[0].Kelvin == 2200, "Save returns the trimmed palette");
+            }
+            var original = new Palette("Mine", PaletteEntry.White(2200), PaletteEntry.White(3000));
+            using (var editor = new PaletteEditor(original, new[] { "Sunset" }))
+            {
+                Get<TextBox>(editor, "name").Text = "Renamed"; editor.AddEntry(PaletteEntry.White(5000));
+                Assert(original.Name == "Mine" && original.Entries.Count == 2, "Editing never changes the original until saved");
+                editor.Save();
+                Assert(editor.Result.Name == "Renamed" && editor.Result.Entries.Count == 3, "Editing returns the changed copy");
+            }
+        }
+
+        static void PaletteManagement(MainWindow window)
+        {
+            var panel = Tests.Field<AmbiencePanel>(window, "ambiencePanel");
+            var saves = new List<int>();
+            window.SaveSettings = settings => saves.Add(settings.CustomPalettes.Count);
+            window.ShowEditor = editor => {
+                Get<TextBox>(editor, "name").Text = "Calm";
+                editor.AddEntry(PaletteEntry.Rgb(10, 20, 30)); editor.AddEntry(PaletteEntry.White(2200));
+                editor.Save(); return editor.DialogResult;
+            };
+            Get<GlassButton>(panel, "newPalette").PerformClick();
+            var saved = Tests.Field<Settings>(window, "saved");
+            Assert(saved.CustomPalettes.Single().Name == "Calm" && panel.SelectedPalette.Name == "Calm" && saves.Last() == 1, "A new palette is saved and chosen");
+            Assert(Get<GlassButton>(panel, "editPalette").Enabled && Get<GlassButton>(panel, "deletePalette").Enabled, "Custom palettes can be edited and deleted");
+
+            window.ShowEditor = editor => {
+                Assert(Get<TextBox>(editor, "name").Text == "Calm", "Edit opens the chosen palette");
+                Get<TextBox>(editor, "name").Text = "Calmer"; editor.Save(); return editor.DialogResult;
+            };
+            Get<GlassButton>(panel, "editPalette").PerformClick();
+            Assert(saved.CustomPalettes.Select(p => p.Name).SequenceEqual(new[] { "Calmer" }) && panel.SelectedPalette.Name == "Calmer", "Editing replaces the palette instead of adding one");
+
+            window.ShowEditor = editor => DialogResult.Cancel;
+            Get<GlassButton>(panel, "newPalette").PerformClick();
+            Assert(saved.CustomPalettes.Count == 1, "Cancel changes nothing");
+
+            window.ConfirmDelete = palette => false;
+            Get<GlassButton>(panel, "deletePalette").PerformClick();
+            Assert(saved.CustomPalettes.Count == 1, "Declining the question keeps the palette");
+            window.ConfirmDelete = palette => true;
+            Get<GlassButton>(panel, "deletePalette").PerformClick();
+            Assert(saved.CustomPalettes.Count == 0 && panel.SelectedPalette.Name == "Sunset" && !Get<GlassButton>(panel, "deletePalette").Enabled, "Delete removes the palette and falls back to Sunset");
+
+            window.SaveSettings = settings => { throw new InvalidOperationException("disk full"); };
+            window.ShowEditor = editor => { Get<TextBox>(editor, "name").Text = "Lost"; editor.AddEntry(PaletteEntry.White(2200)); editor.AddEntry(PaletteEntry.White(3000)); editor.Save(); return editor.DialogResult; };
+            Get<GlassButton>(panel, "newPalette").PerformClick();
+            Assert(saved.CustomPalettes.Count == 0 && Tests.Field<Label>(window, "status").Text.Contains("disk full"), "A failed save keeps the old palettes and says why");
+            window.SaveSettings = settings => { };
         }
 
         static void RunAndStop(MainWindow window, List<string> calls)

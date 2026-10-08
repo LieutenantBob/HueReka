@@ -15,6 +15,9 @@ namespace HueReka
         AmbiencePanel ambiencePanel;
         AmbienceRunner ambience;
         CancellationTokenSource ambienceStop;
+        // Replaceable so tests can drive the editor and the delete question without showing dialogs.
+        internal Func<PaletteEditor, DialogResult> ShowEditor;
+        internal Func<string, bool> ConfirmDelete;
 
         void BuildAmbience()
         {
@@ -30,6 +33,11 @@ namespace HueReka
             ambiencePanel.StopRequested += (sender, args) => StopAmbience("Ambience stopped. Your lights keep their current colors.");
             ambiencePanel.ChoicesChanged += async (sender, args) => { if (ambience != null) await StartAmbience(ambience.LightIds); };
             ShowTab(false);
+            ShowEditor = editor => editor.ShowDialog(this);
+            ConfirmDelete = name => MessageBox.Show(this, "Delete the palette " + name + "? This can't be undone.", "Delete palette", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            ambiencePanel.NewRequested += (sender, args) => EditPalette(null);
+            ambiencePanel.EditRequested += (sender, args) => EditPalette(ambiencePanel.SelectedPalette);
+            ambiencePanel.DeleteRequested += (sender, args) => DeletePalette(ambiencePanel.SelectedPalette);
         }
 
         // Shows the saved choices. Out-of-range values are clamped by the sliders, and a missing palette falls back to the first one.
@@ -116,6 +124,42 @@ namespace HueReka
             ambience = null; ambienceStop = null;
             if (!IsDisposed) { ambiencePanel.Running = false; UpdateAmbienceTargets(); }
             if (message != null) status.Text = message;
+        }
+
+        static bool SameName(Palette palette, Palette other) { return other != null && String.Equals(palette.Name.Trim(), other.Name.Trim(), StringComparison.OrdinalIgnoreCase); }
+
+        // existing == null makes a new palette; otherwise edits that custom palette.
+        void EditPalette(Palette existing)
+        {
+            if (existing != null && Palettes.IsPreset(existing.Name)) return;
+            var taken = Palettes.All(saved).Where(palette => !SameName(palette, existing)).Select(palette => palette.Name);
+            using (var editor = new PaletteEditor(existing, taken))
+            {
+                if (ShowEditor(editor) != DialogResult.OK || editor.Result == null) return;
+                var customs = Palettes.Custom(saved).Where(palette => !SameName(palette, existing)).ToList();
+                customs.Add(editor.Result);
+                SaveCustomPalettes(customs, editor.Result.Name, "Palette " + editor.Result.Name + (existing == null ? " saved." : " updated."));
+            }
+        }
+
+        void DeletePalette(Palette palette)
+        {
+            if (palette == null || Palettes.IsPreset(palette.Name) || !ConfirmDelete(palette.Name)) return;
+            SaveCustomPalettes(Palettes.Custom(saved).Where(other => !SameName(other, palette)).ToList(), Palettes.DefaultName, "Palette " + palette.Name + " deleted.");
+        }
+
+        void SaveCustomPalettes(List<Palette> customs, string select, string message)
+        {
+            var previous = saved.CustomPalettes; string previousChoice = saved.AmbiencePalette;
+            saved.CustomPalettes = customs; saved.AmbiencePalette = select;
+            try { SaveSettings(saved); }
+            catch (Exception error)
+            {
+                saved.CustomPalettes = previous; saved.AmbiencePalette = previousChoice;
+                status.Text = "Couldn't save your palettes: " + error.Message; return;
+            }
+            ambiencePanel.ShowPalettes(Palettes.All(saved), select);
+            status.Text = message;
         }
 
         // Lights changed by hand leave the ambience; when none are left it ends right away.
