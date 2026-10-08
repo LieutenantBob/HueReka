@@ -22,6 +22,16 @@ Double-click **Launch.cmd**, or run **dist\HueReka!.exe** after building. Window
 - **Double-click** a light to switch it on or off. Press **Space** in the list to switch all selected lights on or off.
 - **F5** refreshes. The brightness slider accepts the arrow keys, Page Up/Down, Home and End, and applies the change when you release the key. Hover over controls for tips.
 
+### Ambience
+
+Open the **Ambience** tab above the controls to let your lights drift slowly through a palette of colors and whites.
+
+1. Select the lights on the left (Ctrl+A for all). Lights that can't dim or change color, such as smart plugs, are skipped.
+2. Pick a palette: **Sunset**, **Ocean**, **Forest**, **Candlelight**, **Aurora**, **Daylight**, or your own. **New palette...** lets you combine up to 12 colors and warm, neutral or cool whites.
+3. Choose **Drift** (each light wanders at its own pace) or **Together** (all lights change at once), set the speed (every 10 seconds up to every 10 minutes) and the brightness, then press **Start ambience**.
+
+The bridge fades each light smoothly over the whole step, so HueReka sends only one command per light per step. White-only bulbs show the closest white, and dimmable bulbs stay on at the chosen brightness. Changing a light yourself takes it out of the ambience, and **All lights off** stops it. The ambience runs while HueReka is open. If the bridge connection drops, it retries each light after about 5 seconds and carries on where it left off. Changing the mode, palette, speed or brightness, or editing its palette, while it runs restarts it with the new choice. From the command line, use `huereka ambience` (see `CLI-GUIDE.md`).
+
 ## Command Prompt
 
 The console executable is `dist\huereka.exe`. It shares the desktop app's saved pairing and never opens a window. In a normal Command Prompt:
@@ -55,7 +65,7 @@ $test = Start-Process .\dist\HueReka!.exe -ArgumentList '--test' -Wait -PassThru
 $test.ExitCode
 ```
 
-The build uses the C# compiler included with Windows' .NET Framework. Tests cover mock bridge pairing (including waiting for the link button, timeout and cancel) and routes, light parsing, Hue errors, brightness conversion, Windows credential encryption, form construction, and multi-light selection. They write `preview.png`; failures write `test-failure.txt` and exit with code 1. Tests do not send commands to physical lights.
+The build uses the C# compiler included with Windows' .NET Framework. Tests cover mock bridge pairing (including waiting for the link button, timeout and cancel) and routes, light parsing, Hue errors, brightness conversion, Windows credential encryption, form construction, multi-light selection, ambience palettes, planning and pacing, the runner against a simulated bridge, and the Ambience tab and palette editor. They write `preview.png`; failures write `test-failure.txt` and exit with code 1. Tests do not send commands to physical lights.
 
 ## Connection and security
 

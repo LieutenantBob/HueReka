@@ -2,6 +2,13 @@
 
 All notable changes to HueReka! are listed here.
 
+## [Unreleased]
+
+### Added
+- **Ambience:** a new **Ambience** tab slowly fades all or selected lights through a palette of colors and whites. Choose **Drift**, where each light wanders at its own pace, or **Together**, set the speed from every 10 seconds to every 10 minutes, and pick a brightness. The bridge does the fading, so the effect is smooth and light on your network.
+- Six built-in palettes (Sunset, Ocean, Forest, Candlelight, Aurora, Daylight), and your own palettes with up to 12 colors or whites. Your palettes and last choices are saved and kept when you pair again, in the app or with `huereka pair`.
+- `huereka palettes` and `huereka ambience <palette> [id ...] [--together] [--speed <s>] [--brightness <%>]`, which runs until Ctrl+C.
+
 ## [1.1.0] - 2026-09-21
 
 ### Added
